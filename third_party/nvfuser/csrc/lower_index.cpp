@@ -1328,6 +1328,23 @@ void IndexLowering::allocateUniqueFusedReduction(
   insertAtTopLevel(fused_reduction_alloc_reduction);
 }
 
+void IndexLowering::handle(const CatOp* cat) {
+  // Create the predicate that determines
+  // which of lhs and rhs tensors should be used as the producer. Then
+  // this expr can be converted to where expr
+
+  const auto lhs = lowerSrcIndex(cat->lhs(), cat->out());
+  const auto rhs = lowerSrcIndex(cat->rhs(), cat->out());
+  const auto out = lowerDstIndex(cat->out());
+
+  // TODO:
+  auto pred = IrBuilder::create<Bool>(true);
+
+  pushBack(
+      IrBuilder::create<TernaryOp>(TernaryOpType::Where, out, pred, lhs, rhs));
+  GpuLower::current()->propagateExprInfo(cat, back());
+}
+
 } // namespace cuda
 } // namespace fuser
 } // namespace jit

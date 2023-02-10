@@ -117,6 +117,11 @@ std::unordered_map<IterDomain*, IterDomain*> PairwiseRootDomainMap::map(
     select_skip_consumer = true;
   }
 
+  IterDomain* concat_id = nullptr;
+  if (auto cat = dynamic_cast<CatOp*>(consumer_tv_->definition())) {
+    concat_id = consumer->getRootDomain().at(cat->dim());
+  }
+
   std::unordered_map<IterDomain*, IterDomain*> dom_map;
   const auto producer_root =
       TensorDomain::noReductions(producer->getMaybeRFactorDomain());
@@ -155,6 +160,13 @@ std::unordered_map<IterDomain*, IterDomain*> PairwiseRootDomainMap::map(
     // In exact mapping, do not map broadcast domains with
     // non-broadcast domains
     if (is_exact_ && producer_id->isBroadcast() != consumer_id->isBroadcast()) {
+      itc++;
+      itp++;
+      continue;
+    }
+
+    // In exact mapping, do not map concatenated domaisn
+    if (is_exact_ && concat_id != nullptr && consumer_id == concat_id) {
       itc++;
       itp++;
       continue;

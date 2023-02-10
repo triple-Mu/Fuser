@@ -3032,6 +3032,33 @@ c10::optional<ParallelType> NamedScalar::getParallelIndex() const {
   return c10::nullopt;
 }
 
+CatOp::CatOp(
+    IrBuilderPasskey passkey,
+    TensorView* out,
+    TensorView* x,
+    TensorView* y,
+    int dim)
+    : Expr(passkey) {
+  addInput(x);
+  addInput(y);
+  addOutput(out);
+  addAttribute(IrBuilder::create<Attribute<int>>(passkey.ir_container_, dim));
+}
+
+NVFUSER_DEFINE_CLONE_AND_CREATE(CatOp)
+
+std::string CatOp::toString(int indent_size) const {
+  std::stringstream ss;
+  indent(ss, indent_size) << out()->toString() << "\n";
+  indent(ss, indent_size) << "   = cat( " << lhs()->toString() << ", "
+                          << rhs()->toString() << " )\n";
+  return ss.str();
+}
+
+std::string CatOp::toInlineString(int indent_size) const {
+  TORCH_CHECK(false, "Tensor op can not be printed inline");
+}
+
 } // namespace cuda
 } // namespace fuser
 } // namespace jit

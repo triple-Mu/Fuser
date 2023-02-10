@@ -2184,6 +2184,43 @@ class TORCH_CUDA_CU_API NamedScalar : public Val {
   std::string name_;
 };
 
+class TORCH_CUDA_CU_API CatOp : public Expr {
+ public:
+  using Expr::Expr;
+
+  CatOp(
+      IrBuilderPasskey passkey,
+      TensorView* out,
+      TensorView* lhs,
+      TensorView* rhs,
+      int dim);
+
+  NVFUSER_DECLARE_CLONE_AND_CREATE
+
+  virtual const char* getOpString() const override {
+    return "CatOp";
+  }
+
+  std::string toString(int indent_size = 0) const override;
+  std::string toInlineString(int indent_size = 0) const override;
+
+  Val* out() const {
+    return output(0);
+  }
+
+  Val* lhs() const {
+    return input(0);
+  }
+
+  Val* rhs() const {
+    return input(1);
+  }
+
+  int dim() const {
+    return attribute(0)->as<Attribute<int>>()->value;
+  }
+};
+
 } // namespace cuda
 } // namespace fuser
 } // namespace jit

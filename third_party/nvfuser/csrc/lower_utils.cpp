@@ -118,6 +118,7 @@ bool isTvOp(const Expr* expr) {
           expr->outputs().end(),
           [](Val* v) { return isTV(v); }) &&
       (expr->isOneOf<
+          CatOp,
           UnaryOp,
           BinaryOp,
           TernaryOp,

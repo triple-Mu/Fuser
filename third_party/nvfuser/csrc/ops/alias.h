@@ -69,6 +69,8 @@ TORCH_CUDA_CU_API TensorView* transpose(
 //! Transpose a 2D tensor.
 TORCH_CUDA_CU_API TensorView* transpose(TensorView* x);
 
+TORCH_CUDA_CU_API TensorView* cat(TensorView* x, TensorView* y, int dim);
+
 } // namespace cuda
 } // namespace fuser
 } // namespace jit

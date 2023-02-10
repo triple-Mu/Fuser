@@ -374,6 +374,52 @@ TensorView* transpose(TensorView* x) {
   return transpose(x, 0, 1);
 }
 
+TensorView* cat(TensorView* x, TensorView* y, int dim) {
+  const auto& x_dom = x->domain()->noReductions();
+  const auto& y_dom = y->domain()->noReductions();
+  const auto ndims = static_cast<int>(x->domain()->noReductions().size());
+
+  std::vector<IterDomain*> out_domain;
+  for (const auto idx : c10::irange(ndims)) {
+    if (idx != dim) {
+      out_domain.push_back(x_dom[idx]->cloneWithoutRFactor());
+    } else {
+      auto x_id = x_dom[idx];
+      auto y_id = y_dom[idx];
+      for (auto id_to_concat : {x_id, y_id}) {
+        TORCH_CHECK(
+            !id_to_concat->isBroadcast(),
+            "Invalid domain to concat: ",
+            id_to_concat->toString());
+        // TODO: what about expanded domains?
+        // Ignore partial domains for now
+        TORCH_CHECK(
+            !id_to_concat->maybePartial(),
+            "Invalid domain to concat: ",
+            id_to_concat->toString());
+        auto concatenated_extent = add(x_id->extent(), y_id->extent());
+        auto concatenated_id =
+            IterDomainBuilder(
+                FusionGuard::getCurFusion()->zeroVal(), concatenated_extent)
+                .iter_type(IterType::Iteration)
+                .build();
+        std::cerr << "Concatenated domain: " << concatenated_id->toString()
+                  << std::endl;
+        out_domain.push_back(concatenated_id);
+      }
+    }
+  }
+
+  auto out = IrBuilder::create<TensorView>(
+      IrBuilder::create<TensorDomain>(
+          out_domain, TensorDomain::getContiguousContiguity(out_domain)),
+      *x->getDataType());
+
+  IrBuilder::create<CatOp>(out, x, y, dim);
+
+  return out;
+}
+
 } // namespace cuda
 } // namespace fuser
 } // namespace jit
