@@ -27,7 +27,30 @@ TEST_F(NVFuserTest, FusionExpand1_CUDA) {
 
   tv1->expand(0, IrBuilder::create<Int>(1), IrBuilder::create<Int>(2));
 
-  fusion.print();
+  tv1->split(0, 4);
+
+  fusion.printKernel();
+}
+
+TEST_F(NVFuserTest, FusionExpand2_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  auto tv0 = makeSymbolicTensor(1);
+  fusion.addInput(tv0);
+
+  auto tv1 = set(tv0);
+  fusion.addOutput(tv1);
+
+  fusion.printMath();
+
+  tv1->split(0, 3);
+
+  tv1->expand(0, IrBuilder::create<Int>(1), IrBuilder::create<Int>(2));
+
+  // When expand is done on a non-root domain, the input domain of the
+  // expand needs to be predicated
+
   fusion.printKernel();
 }
 

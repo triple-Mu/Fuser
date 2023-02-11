@@ -8,6 +8,7 @@
 #include <ir_all_nodes.h>
 #include <ir_iostream.h>
 #include <ir_utils.h>
+#include <iter_visitor.h>
 #include <lower2device.h>
 #include <lower_double_buffer.h>
 #include <lower_index_compute.h>
@@ -2320,6 +2321,27 @@ std::vector<PredicateDomainInfo> getNonDivisibleConsumerDomainsToPredicate(
   return pred_info_vec;
 }
 
+std::vector<PredicateDomainInfo> getExpandedDomainsToPredicate(
+    TensorView* consumer_tv) {
+  std::vector<PredicateDomainInfo> pred_info_vec;
+
+  auto exprs = StmtSort::getExprsBetween(
+      consumer_tv->fusion(),
+      {consumer_tv->getRootDomain().begin(),
+       consumer_tv->getRootDomain().end()},
+      {consumer_tv->domain()->domain().begin(),
+       consumer_tv->domain()->domain().end()});
+
+  for (auto expand : ir_utils::filterByType<Expand>(exprs)) {
+    // TODO: This isn't a predicate for a non-divisible split, but the
+    // last argument to the PredicateDomainInfo ctor should be true.
+    PredicateDomainInfo info{expand->in(), {expand->in()}, true};
+    pred_info_vec.emplace_back(info);
+  }
+
+  return pred_info_vec;
+}
+
 bool needsPadding(TensorView* tv) {
   auto shift_expr = dynamic_cast<ShiftOp*>(tv->definition());
   auto gather_expr = dynamic_cast<GatherOp*>(tv->definition());
@@ -2645,7 +2667,7 @@ Val* simplifyStartOffset(Val* start_offset) {
   // Start predicate can be omitted when start_offset >= 0.
   auto offset_val = start_offset->as<Int>()->value();
   if (offset_val.has_value() && offset_val.value() >= 0) {
-    return nullptr;
+    // return nullptr;
   }
 
   // start_offset may look like min(0, window_index - pad). Then, can
@@ -2793,6 +2815,13 @@ std::vector<RootPredicateInfo> Index::getReferenceRootPredicates(
       contig_id_infos.end(),
       non_divisible_splits.begin(),
       non_divisible_splits.end());
+
+  auto expanded_domains_to_predicate =
+      getExpandedDomainsToPredicate(consumer_tv);
+  contig_id_infos.insert(
+      contig_id_infos.end(),
+      expanded_domains_to_predicate.begin(),
+      expanded_domains_to_predicate.end());
 
   std::vector<RootPredicateInfo> pred_info_vec;
 
