@@ -13,7 +13,7 @@ namespace jit {
 
 using namespace torch::jit::fuser::cuda;
 
-TEST_F(NVFuserTest, FusionExpand1_CUDA) {
+TEST_F(NVFuserTest, FusionIterDomainExpand1_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -30,9 +30,22 @@ TEST_F(NVFuserTest, FusionExpand1_CUDA) {
   tv1->split(0, 4);
 
   fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn({9}, options);
+
+  std::vector<IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  TORCH_CHECK(t0.equal(cg_outputs[0]));
 }
 
-TEST_F(NVFuserTest, FusionExpand2_CUDA) {
+TEST_F(NVFuserTest, FusionIterDomainExpand2_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -52,9 +65,21 @@ TEST_F(NVFuserTest, FusionExpand2_CUDA) {
   // expand needs to be predicated
 
   fusion.printKernel();
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn({19}, options);
+
+  std::vector<IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  TORCH_CHECK(t0.equal(cg_outputs[0]));
 }
 
-TEST_F(NVFuserTest, FusionExpand3_CUDA) {
+TEST_F(NVFuserTest, FusionIterDomainExpand3_1_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -67,12 +92,54 @@ TEST_F(NVFuserTest, FusionExpand3_CUDA) {
   tv1->expand(0, IrBuilder::create<Int>(1), IrBuilder::create<Int>(2));
   tv1->merge(0);
 
+  fusion.printMath();
+  fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn({19, 7}, options);
+
+  std::vector<IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  TORCH_CHECK(t0.equal(cg_outputs[0]));
+}
+
+TEST_F(NVFuserTest, FusionIterDomainExpand3_2_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+
+  auto tv1 = set(tv0);
+  fusion.addOutput(tv1);
+
+  tv1->expand(1, IrBuilder::create<Int>(1), IrBuilder::create<Int>(2));
+  tv1->merge(0);
 
   fusion.printMath();
   fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn({19, 7}, options);
+
+  std::vector<IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  TORCH_CHECK(t0.equal(cg_outputs[0]));
 }
 
-TEST_F(NVFuserTest, FusionExpand4_CUDA) {
+TEST_F(NVFuserTest, FusionIterDomainExpand4_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -88,6 +155,19 @@ TEST_F(NVFuserTest, FusionExpand4_CUDA) {
 
   fusion.printMath();
   fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn({19, 7}, options);
+
+  std::vector<IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  TORCH_CHECK(t0.equal(cg_outputs[0]));
 }
 
 TEST_F(NVFuserTest, FusionCat1_CUDA) {

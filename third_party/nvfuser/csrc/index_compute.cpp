@@ -2345,9 +2345,10 @@ std::vector<PredicateDomainInfo> getExpandedDomainsToPredicate(
   for (auto expand : ir_utils::filterByType<Expand>(exprs)) {
     // If the input is a root domain, it is already predicated by the
     // normal predicate logic
-    if (std::find(consumer_tv->getRootDomain().begin(),
-                  consumer_tv->getRootDomain().end(),
-                  expand->in()) != consumer_tv->getRootDomain().end()) {
+    if (std::find(
+            consumer_tv->getRootDomain().begin(),
+            consumer_tv->getRootDomain().end(),
+            expand->in()) != consumer_tv->getRootDomain().end()) {
       continue;
     }
     // TODO: This isn't a predicate for a non-divisible split, but the

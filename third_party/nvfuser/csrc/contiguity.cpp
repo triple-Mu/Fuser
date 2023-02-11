@@ -538,10 +538,11 @@ void ContigIDs::build(const std::vector<IterDomain*>& ids) {
       if (auto expand = dynamic_cast<Expand*>(expr)) {
         expand_deps_.insert(expand->out());
       } else {
-        if (std::any_of(expr->inputs().begin(), expr->inputs().end(),
-                        [&](Val* inp) {
-                          return inp->isA<IterDomain>() && expand_deps_.count(inp->as<IterDomain>());
-                        })) {
+        if (std::any_of(
+                expr->inputs().begin(), expr->inputs().end(), [&](Val* inp) {
+                  return inp->isA<IterDomain>() &&
+                      expand_deps_.count(inp->as<IterDomain>());
+                })) {
           for (auto out : ir_utils::filterByType<IterDomain>(expr->outputs())) {
             expand_deps_.insert(out);
           }
@@ -622,7 +623,7 @@ void ContigIDs::handle(Merge* merge) {
   if (expand_deps_.count(merge->out())) {
     std::cerr << "Expand dep\n";
     return;
-  }    
+  }
 
   // Now we know merge->out is a contiguously indexable ID
 
