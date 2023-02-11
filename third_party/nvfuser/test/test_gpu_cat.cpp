@@ -202,6 +202,118 @@ TEST_F(NVFuserTest, FusionIterDomainExpand5_CUDA) {
   TORCH_CHECK(t0.equal(cg_outputs[0]));
 }
 
+TEST_F(NVFuserTest, FusionIterDomainExpand6_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  // auto tv0 = makeSymbolicTensor(1);
+  auto tv0 = makeConcreteTensor({7, 11});
+  fusion.addInput(tv0);
+
+  auto tv1 = set(tv0);
+  auto tv2 = set(tv1);
+  auto tv3 = set(tv2);
+  fusion.addOutput(tv3);
+
+  tv1->split(0, 3);
+
+  tv2->merge(0);
+  tv2->expand(0, IrBuilder::create<Int>(1), IrBuilder::create<Int>(2));
+  tv2->split(0, 4);
+
+  tv3->split(1, 5);
+
+  fusion.printMath();
+  fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn({7, 11}, options);
+
+  std::vector<IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  TORCH_CHECK(t0.equal(cg_outputs[0]));
+}
+
+TEST_F(NVFuserTest, FusionIterDomainExpand7_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  // auto tv0 = makeSymbolicTensor(1);
+  auto tv0 = makeConcreteTensor({11});
+  fusion.addInput(tv0);
+
+  auto tv1 = set(tv0);
+  auto tv2 = set(tv1);
+  auto tv3 = set(tv2);
+  fusion.addOutput(tv3);
+
+  tv1->split(0, 3);
+  tv1->expand(1, IrBuilder::create<Int>(1), IrBuilder::create<Int>(2));
+
+  tv2->expand(0, IrBuilder::create<Int>(1), IrBuilder::create<Int>(2));
+
+  tv3->split(0, 5);
+
+  fusion.printMath();
+  fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn({11}, options);
+
+  std::vector<IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  TORCH_CHECK(t0.equal(cg_outputs[0]));
+}
+
+TEST_F(NVFuserTest, FusionIterDomainExpand8_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  // auto tv0 = makeSymbolicTensor(1);
+  auto tv0 = makeConcreteTensor({11});
+  fusion.addInput(tv0);
+
+  auto tv1 = set(tv0);
+  auto tv2 = set(tv1);
+  auto tv3 = set(tv2);
+  fusion.addOutput(tv3);
+
+  tv1->split(0, 3);
+  tv1->expand(0, IrBuilder::create<Int>(1), IrBuilder::create<Int>(2));
+  tv1->expand(1, IrBuilder::create<Int>(3), IrBuilder::create<Int>(4));
+
+  TransformPropagator propagator(tv1);
+  MaxRootDomainInfoSpanningTree(tv1).traverse(&propagator);
+
+  fusion.printMath();
+  fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn({11}, options);
+
+  std::vector<IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  TORCH_CHECK(t0.equal(cg_outputs[0]));
+}
+
 TEST_F(NVFuserTest, FusionCat1_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
