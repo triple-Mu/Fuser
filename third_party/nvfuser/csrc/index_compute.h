@@ -71,6 +71,7 @@ class IndexCompute : public BackwardVisitor {
   void handle(Merge*) override;
   void handle(Expr*) override;
   void handle(Swizzle2D*) override;
+  void handle(Expand*) override;
 
   // return extent_map_[id] if exists, else return id->extent()
   Val* getExtent(IterDomain* id) const;

@@ -13,6 +13,24 @@ namespace jit {
 
 using namespace torch::jit::fuser::cuda;
 
+TEST_F(NVFuserTest, FusionExpand1_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  auto tv0 = makeSymbolicTensor(1);
+  fusion.addInput(tv0);
+
+  auto tv1 = set(tv0);
+  fusion.addOutput(tv1);
+
+  fusion.printMath();
+
+  tv1->expand(0, IrBuilder::create<Int>(1), IrBuilder::create<Int>(2));
+
+  fusion.print();
+  fusion.printKernel();
+}
+
 TEST_F(NVFuserTest, FusionCat1_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);

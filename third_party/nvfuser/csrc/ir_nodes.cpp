@@ -2156,6 +2156,48 @@ std::pair<IterDomain*, IterDomain*> IterDomain::swizzle(
   return std::make_pair(out_x, out_y);
 }
 
+IterDomain* IterDomain::expand(
+    IterDomain* in,
+    Val* left_expansion,
+    Val* right_expansion) {
+  TORCH_CHECK(
+      left_expansion->isScalar(),
+      "Expansion factor must be a scalar: ",
+      left_expansion->toString());
+  TORCH_CHECK(
+      right_expansion->isScalar(),
+      "Expansion factor must be a scalar: ",
+      right_expansion->toString());
+
+  // Only Inteation is considered for now. Should be possible to
+  // include expansion of broadcast domains
+  TORCH_CHECK(
+      in->getIterType() == IterType::Iteration,
+      "Not a valid IterType: ",
+      in->getIterType());
+
+  TORCH_CHECK(
+      in->start()->isZeroInt(),
+      "Non-zero start not considered: ",
+      in->toString());
+  TORCH_CHECK(
+      in->stopOffset()->isZeroInt(),
+      "Non-zero stop offset not considered: ",
+      in->toString());
+
+  Val* expanded_id_size =
+      add(add(in->extent(), left_expansion), right_expansion);
+
+  auto expanded_id =
+      IterDomainBuilder(in->container()->zeroVal(), expanded_id_size->as<Int>())
+          .build();
+
+  IrBuilder::create<Expand>(
+      in->container(), expanded_id, in, left_expansion, right_expansion);
+
+  return expanded_id;
+}
+
 // TODO: We should change parallelize interface to be on tensorview or at least
 // vectorize should be done on tensorview. This would let us check that we don't
 // vectorize to the left of the computeAt domain, and could allow us to do some
@@ -2678,6 +2720,27 @@ void TensorDomain::swizzle(
   resetDomains();
 }
 
+void TensorDomain::expand(int dim, Val* left_expansion, Val* right_expansion) {
+  TORCH_INTERNAL_ASSERT(nDims() > 0, "Tried to do expand a 0-dim domain");
+  if (dim < 0) {
+    dim += nDims();
+  }
+
+  TORCH_INTERNAL_ASSERT(
+      dim >= 0 && (unsigned int)dim < nDims(),
+      "Tried to expand axis outside TensorDomain's range.");
+
+  IterDomain* id = axis(dim);
+
+  TORCH_INTERNAL_ASSERT(
+      !id->isMmaSwizzled(),
+      "Further transformation on warp mapped id's not allowed.");
+
+  auto expanded_id = IterDomain::expand(id, left_expansion, right_expansion);
+  domain_.at(dim) = expanded_id;
+  resetDomains();
+}
+
 std::vector<IterDomain*> TensorDomain::noReductions(
     const std::vector<IterDomain*>& td) {
   std::vector<IterDomain*> noReductionDomain;
@@ -2951,6 +3014,36 @@ std::string Swizzle2D::toInlineString(int indent_size) const {
 
 NVFUSER_DEFINE_CLONE_AND_CREATE(Swizzle2D)
 
+Expand::Expand(
+    IrBuilderPasskey passkey,
+    IterDomain* out,
+    IterDomain* in,
+    Val* left,
+    Val* right)
+    : Expr(passkey) {
+  addOutput(out);
+  addInput(in);
+  addAttribute(left);
+  addAttribute(right);
+}
+
+std::string Expand::toString(int indent_size) const {
+  std::stringstream ss;
+  ss << "Expand: ";
+  ss << in()->toString();
+  ss << " by " << left()->toString() << " and " << right()->toString();
+  ss << " -> ";
+  ss << out()->toString();
+  ss << "\n";
+  return ss.str();
+}
+
+std::string Expand::toInlineString(int indent_size) const {
+  TORCH_CHECK(false, "Expand can not be printed inline");
+}
+
+NVFUSER_DEFINE_CLONE_AND_CREATE(Expand)
+
 NamedScalar::NamedScalar(
     IrBuilderPasskey passkey,
     std::string name,
@@ -3039,9 +3132,9 @@ CatOp::CatOp(
     TensorView* y,
     int dim)
     : Expr(passkey) {
+  addOutput(out);
   addInput(x);
   addInput(y);
-  addOutput(out);
   addAttribute(IrBuilder::create<Attribute<int>>(passkey.ir_container_, dim));
 }
 

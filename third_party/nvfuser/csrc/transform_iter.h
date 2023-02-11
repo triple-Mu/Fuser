@@ -74,6 +74,8 @@ class TORCH_CUDA_CU_API ReplayTransformations : public IterVisitor {
   //  if replaying swizzle is enabled.
   void handle(Swizzle2D* m) override;
 
+  void handle(Expand* exp) override;
+
  public:
   ReplayTransformations(
       const std::vector<IterDomain*>& _target_domain,

@@ -565,8 +565,25 @@ void IndexCompute::handle(Swizzle2D* swizzle_2d) {
   }
 }
 
+void IndexCompute::handle(Expand* expand) {
+  auto out_id = maybeGetExactMapConcreteID(expand->out());
+  auto in_id = maybeGetExactMapConcreteID(expand->in());
+
+  auto out_it = index_map_.find(out_id);
+
+  if (out_it == index_map_.end()) {
+    return;
+  }
+
+  const auto out_ind = out_it->second;
+
+  index_map_[in_id] = sub(out_ind, expand->left());
+  extent_map_[in_id] =
+      sub(sub(getExtent(out_id), expand->left()), expand->right());
+}
+
 void IndexCompute::handle(Expr* e) {
-  auto is_expected_type = e->isOneOf<Split, Merge, Swizzle2D>();
+  auto is_expected_type = e->isOneOf<Split, Merge, Swizzle2D, Expand>();
   TORCH_INTERNAL_ASSERT(
       is_expected_type, "Invalid expr type found in transform traversal.");
   BackwardVisitor::handle(e);

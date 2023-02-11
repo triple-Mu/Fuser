@@ -1468,6 +1468,11 @@ class TORCH_CUDA_CU_API IterDomain : public Val {
       bool inner_split,
       bool trim_out_of_bounds);
 
+  static IterDomain* expand(
+      IterDomain* in,
+      Val* left_expansion,
+      Val* right_expansion);
+
   bool isReduction() const {
     return getIterType() == IterType::Reduction;
   }
@@ -1865,6 +1870,8 @@ class TORCH_CUDA_CU_API TensorDomain : public Val {
       int y,
       SwizzleMode swizzle_mode = SwizzleMode::Data);
 
+  void expand(int dim, Val* left_expansion, Val* right_expansion);
+
   // Transform TensorView according to merge and split transformations
   TensorDomain* view(const AnalyzeViewResult& view_analysis);
 
@@ -2125,6 +2132,43 @@ class TORCH_CUDA_CU_API Swizzle2D : public Expr {
   //  and replay of the fusion IR infrastructure.
   auto swizzleMode() const {
     return attribute(1)->as<Attribute<SwizzleMode>>()->value;
+  }
+};
+
+class TORCH_CUDA_CU_API Expand : public Expr {
+ public:
+  using Expr::Expr;
+
+  Expand(
+      IrBuilderPasskey,
+      IterDomain* out,
+      IterDomain* in,
+      Val* left,
+      Val* right);
+
+  NVFUSER_DECLARE_CLONE_AND_CREATE
+
+  virtual const char* getOpString() const override {
+    return "Expand";
+  }
+
+  std::string toString(int indent_size = 0) const override;
+  std::string toInlineString(int indent_size = 0) const override;
+
+  IterDomain* out() const {
+    return output(0)->as<IterDomain>();
+  }
+
+  IterDomain* in() const {
+    return input(0)->as<IterDomain>();
+  }
+
+  Val* left() const {
+    return attributeVal(0);
+  }
+
+  Val* right() const {
+    return attributeVal(1);
   }
 };
 

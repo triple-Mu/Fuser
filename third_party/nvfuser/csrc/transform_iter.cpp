@@ -12,7 +12,7 @@ namespace cuda {
 
 // Transform dispatch
 void ReplayTransformations::handle(Expr* e) {
-  auto is_supported_expr = e->isOneOf<Split, Merge, Swizzle2D>();
+  auto is_supported_expr = e->isOneOf<Split, Merge, Swizzle2D, Expand>();
   TORCH_INTERNAL_ASSERT(
       is_supported_expr, "Invalid expr type found in transform traversal.");
   IterVisitor::handle(e);
@@ -173,6 +173,34 @@ void ReplayTransformations::handle(Swizzle2D* swizzle_2d) {
   // Update our ID map to include these outputs
   id_map_[swizzle_2d->outX()] = outs.first;
   id_map_[swizzle_2d->outY()] = outs.second;
+}
+
+void ReplayTransformations::handle(Expand* exp) {
+  auto id_in = exp->in();
+
+  auto it = id_map_.find(id_in);
+  if (it == id_map_.end()) {
+    if (error_on_failure_) {
+      TORCH_INTERNAL_ASSERT(
+          false, "Transform traversal failed, dependencies not met.");
+    } else {
+      return;
+    }
+  }
+
+  auto mapped = (*it).second;
+  // Make sure this ID is a leaf ID (meaning it has no uses we generated)
+  TORCH_INTERNAL_ASSERT(
+      leaf_ids_.find(mapped) != leaf_ids_.end(),
+      "Transform traversal failed, modified a node but it was not a leaf node.");
+
+  auto out = IterDomain::expand(mapped, exp->left(), exp->right());
+
+  leaf_ids_.erase(mapped);
+
+  leaf_ids_[out] = counter++;
+
+  id_map_[exp->out()] = out;
 }
 
 ReplayTransformations::ReplayTransformations(

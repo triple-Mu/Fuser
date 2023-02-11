@@ -392,6 +392,8 @@ class TORCH_CUDA_CU_API TensorView : public Val {
       int y,
       SwizzleMode swizzle_mode = SwizzleMode::Data);
 
+  TensorView* expand(int axis, Val* left_expansion, Val* right_expansion);
+
   // WARNING: rFactor does not return this TensorView, ir returns a new
   //  tensorview consumed by this!
   //

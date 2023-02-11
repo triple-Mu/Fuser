@@ -327,6 +327,48 @@ void OrderedIdInformation::handle(Swizzle2D* swizzle) {
   }
 }
 
+void OrderedIdInformation::handle(Expand* expand) {
+  // Find inputs in the active_ids_ vector
+  const auto in_it =
+      std::find(active_ids_.begin(), active_ids_.end(), expand->in());
+
+  if (in_it == active_ids_.end()) {
+    return;
+  }
+
+  auto in_pos = std::distance(active_ids_.begin(), in_it);
+
+  // Find inputs in the ordered transforms map
+  const auto in_ordered_it = consistently_ordered_ids_.find(expand->in());
+
+  bool in_ordered = in_ordered_it != consistently_ordered_ids_.end();
+
+  // Get root ids of the two inputs
+  const auto in_root_ids_it = id_to_root_ids_.find(expand->in());
+
+  TORCH_INTERNAL_ASSERT(
+      in_root_ids_it != id_to_root_ids_.end(),
+      "Error replaying transforms in contiguous ID checker.");
+
+  const auto& in_root_ids = in_root_ids_it->second;
+
+  // Update map for outputs
+  // Remove inputs from the active_ids_ and insert the output ID
+  active_ids_[in_pos] = expand->out();
+
+  // Not completely certain, but propagating these properties should e
+  // fine
+  if (in_ordered) {
+    consistently_ordered_ids_.emplace(expand->out());
+  }
+
+  if (exclusivelyConsumesRoots(expand->in())) {
+    exclusively_consumes_roots_.emplace(expand->out());
+  }
+
+  id_to_root_ids_[expand->out()] = in_root_ids;
+}
+
 NonDivisibleSplitDependencies::NonDivisibleSplitDependencies(
     // TODO: Revisit reduction rfactor axes and propagation. Should probably use
     // ca_map to propogate non divisibility dependencies across exact map. Still

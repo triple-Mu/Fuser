@@ -926,6 +926,39 @@ TensorView* TensorView::swizzle(
   return this;
 }
 
+TensorView* TensorView::expand(
+    int dim,
+    Val* left_expansion,
+    Val* right_expansion) {
+  TORCH_INTERNAL_ASSERT(nDims() > 0, "Tried to do expand a 0-dim TensorView");
+
+  if (dim < 0) {
+    dim += domain()->nDims();
+  }
+
+  TORCH_CHECK(
+      dim >= (int)getMaxComputePosition(),
+      "Cannot expand an axis at ",
+      dim,
+      " as it is within compute at position, ",
+      getMaxComputePosition());
+
+  TORCH_CHECK(
+      dim >= (int)getMaxProducerPosition(),
+      "Cannot expand an axis at ",
+      dim,
+      " as it is within produce at position, ",
+      getMaxProducerPosition());
+
+  TORCH_CHECK(
+      axis(dim)->getParallelType() == ParallelType::Serial,
+      "Expanding axes of non-Serial parallel type is not supported at this time."
+      " Parallelization strategy must be set after calling expand.");
+
+  domain()->expand(dim, left_expansion, right_expansion);
+  return this;
+}
+
 TensorView* TensorView::rFactor(const std::vector<int>& axes) {
   TORCH_INTERNAL_ASSERT(
       !container()->isA<kir::Kernel>(),
