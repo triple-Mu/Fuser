@@ -170,6 +170,38 @@ TEST_F(NVFuserTest, FusionIterDomainExpand4_CUDA) {
   TORCH_CHECK(t0.equal(cg_outputs[0]));
 }
 
+TEST_F(NVFuserTest, FusionIterDomainExpand5_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  // auto tv0 = makeSymbolicTensor(1);
+  auto tv0 = makeConcreteTensor({7});
+  fusion.addInput(tv0);
+
+  auto tv1 = set(tv0);
+  auto tv2 = set(tv1);
+  auto tv3 = set(tv2);
+  fusion.addOutput(tv3);
+
+  tv2->expand(0, IrBuilder::create<Int>(1), IrBuilder::create<Int>(2));
+
+  fusion.printMath();
+  fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn({7}, options);
+
+  std::vector<IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  TORCH_CHECK(t0.equal(cg_outputs[0]));
+}
+
 TEST_F(NVFuserTest, FusionCat1_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);

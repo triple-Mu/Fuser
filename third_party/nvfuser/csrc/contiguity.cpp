@@ -521,8 +521,6 @@ void ContigIDs::build(const std::vector<IterDomain*>& ids) {
     // need halo.
     if (root_contiguity_[root_domain_i] &&
         !halo_info_->getRootAxisInfo(root_domain_id).hasHalo()) {
-      std::cerr << "Marking a rot domain as contig: "
-                << root_domain_id->toString() << std::endl;
       contig_ids_.emplace(root_domain_id);
       is_contig_root_[root_domain_id] = true;
       within_contig_ids_[root_domain_id] = std::unordered_set<IterDomain*>();
@@ -621,7 +619,6 @@ void ContigIDs::handle(Merge* merge) {
   }
 
   if (expand_deps_.count(merge->out())) {
-    std::cerr << "Expand dep\n";
     return;
   }
 
@@ -651,7 +648,6 @@ void ContigIDs::handle(Merge* merge) {
     contig_ids_.erase(id);
   }
 
-  std::cerr << "Contig merge: " << merge->out()->toString() << std::endl;
   contig_ids_.emplace(merge->out());
 }
 

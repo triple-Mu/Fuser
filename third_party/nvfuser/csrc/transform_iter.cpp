@@ -557,6 +557,8 @@ BestEffortReplay::BestEffortReplay(
       }
     }
 
+    // TODO: Something to do for Expand?
+
     // Take replay expr inputs out of map:
     for (const auto t_i : c10::irange(target_id_inps.size())) {
       auto t_inp = target_id_inps[t_i];

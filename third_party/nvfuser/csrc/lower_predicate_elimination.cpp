@@ -190,7 +190,8 @@ class PredicateChcker : public IterVisitor {
         predicateMisalignedVectorize(expr) || predicateShift(expr) ||
         predicateSharedMemAccess(expr) || predicateProducerConsumerPair(expr) ||
         predicateNonDivisibleRootDomains(expr) ||
-        predicateNonDivisibleSplit(expr) || predicateExpandReduce(expr);
+        predicateNonDivisibleSplit(expr) || predicateExpandReduce(expr) ||
+        predicateExpand(expr);
 
     // A cp.async op would need a predicate for either the global
     //  input or its shared mem output, or both.
@@ -536,6 +537,22 @@ class PredicateChcker : public IterVisitor {
     for (auto output : ir_utils::filterByType<TensorView>(expr->outputs())) {
       if (non_divisible_split_info.splitsToPredicate().find(output) !=
           non_divisible_split_info.splitsToPredicate().end()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool predicateExpand(Expr* expr) const {
+    for (auto output : ir_utils::filterByType<TensorView>(expr->outputs())) {
+      auto exprs = StmtSort::getExprsBetween(
+          expr->fusion(),
+          {output->getRootDomain().begin(), output->getRootDomain().end()},
+          {output->domain()->domain().begin(),
+           output->domain()->domain().end()});
+      if (std::any_of(exprs.begin(), exprs.end(), [](Expr* expr) {
+            return expr->isA<Expand>();
+          })) {
         return true;
       }
     }
