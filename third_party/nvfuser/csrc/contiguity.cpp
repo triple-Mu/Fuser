@@ -521,6 +521,8 @@ void ContigIDs::build(const std::vector<IterDomain*>& ids) {
     // need halo.
     if (root_contiguity_[root_domain_i] &&
         !halo_info_->getRootAxisInfo(root_domain_id).hasHalo()) {
+      std::cerr << "Marking a rot domain as contig: "
+                << root_domain_id->toString() << std::endl;
       contig_ids_.emplace(root_domain_id);
       is_contig_root_[root_domain_id] = true;
       within_contig_ids_[root_domain_id] = std::unordered_set<IterDomain*>();
@@ -533,6 +535,18 @@ void ContigIDs::build(const std::vector<IterDomain*>& ids) {
         {root_domain_.begin(), root_domain_.end()},
         {ids.begin(), ids.end()});
     for (auto expr : exprs) {
+      if (auto expand = dynamic_cast<Expand*>(expr)) {
+        expand_deps_.insert(expand->out());
+      } else {
+        if (std::any_of(expr->inputs().begin(), expr->inputs().end(),
+                        [&](Val* inp) {
+                          return inp->isA<IterDomain>() && expand_deps_.count(inp->as<IterDomain>());
+                        })) {
+          for (auto out : ir_utils::filterByType<IterDomain>(expr->outputs())) {
+            expand_deps_.insert(out);
+          }
+        }
+      }
       handle(expr);
     }
   }
@@ -605,6 +619,11 @@ void ContigIDs::handle(Merge* merge) {
     return;
   }
 
+  if (expand_deps_.count(merge->out())) {
+    std::cerr << "Expand dep\n";
+    return;
+  }    
+
   // Now we know merge->out is a contiguously indexable ID
 
   TORCH_INTERNAL_ASSERT(
@@ -631,6 +650,7 @@ void ContigIDs::handle(Merge* merge) {
     contig_ids_.erase(id);
   }
 
+  std::cerr << "Contig merge: " << merge->out()->toString() << std::endl;
   contig_ids_.emplace(merge->out());
 }
 

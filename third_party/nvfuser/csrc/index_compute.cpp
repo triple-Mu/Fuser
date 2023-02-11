@@ -375,6 +375,7 @@ void IndexCompute::handle(Split* split) {
 }
 
 void IndexCompute::handle(Merge* merge) {
+  std::cerr << "IndexCompute::handle merge: " << merge->toString();
   auto out_id = maybeGetExactMapConcreteID(merge->out());
   auto outer_id = maybeGetExactMapConcreteID(merge->outer());
   auto inner_id = maybeGetExactMapConcreteID(merge->inner());
@@ -399,7 +400,12 @@ void IndexCompute::handle(Merge* merge) {
     return;
   }
 
+  if (outer_id->definition() != nullptr) {
+    std::cerr << "outer def: " << outer_id->definition()->toString();
+  }
+
   if (!hasZeroMerged(out_id) && contig_ids_.find(out_id) != contig_ids_.end()) {
+    std::cerr << "IndexCompute::handle merge contig\n";
     // Contiguous indexing path
     auto input_ids = ir_utils::iterDomainInputsOfOrderedAs(
         {merge->out()}, td_->getMaybeRFactorDomain());
@@ -799,6 +805,7 @@ IndexCompute IndexCompute::updateIndexCompute(
     const ContigIDs& contig_finder) const {
   FUSER_PERF_SCOPE("GpuLower::Lower::updateIndexCompute");
 
+  std::cerr << "updateIndexCompute\n";
   std::unordered_map<IterDomain*, Val*> updated_index_map;
   std::unordered_map<IterDomain*, Val*> updated_extent_map;
   std::unordered_set<IterDomain*> updated_zero_domains;
@@ -1930,6 +1937,8 @@ std::vector<Val*> Index::getGlobalConsumerStridedIndices(
     const std::vector<kir::ForLoop*>& loops) {
   FUSER_PERF_SCOPE("GpuLower::Lower::getGlobalConsumerIndex");
 
+  std::cerr << "getGlobalConsumerStridedIndices: " << consumer_tv->toString()
+            << std::endl;
   auto index_from_id_graph = getTensorIndexFromIdGraph(loops, consumer_tv);
   auto consumer_indexing = index_from_id_graph.index;
   auto strides = getStrides(consumer_tv);
@@ -1958,6 +1967,7 @@ std::vector<Val*> Index::getGlobalConsumerStridedIndices(
   TORCH_INTERNAL_ASSERT(
       strided_inds.size() == consumer_tv->getMaybeRFactorDomain().size());
 
+  std::cerr << "getGlobalConsumerStridedIndices done\n";
   return strided_inds;
 }
 
@@ -2333,6 +2343,13 @@ std::vector<PredicateDomainInfo> getExpandedDomainsToPredicate(
        consumer_tv->domain()->domain().end()});
 
   for (auto expand : ir_utils::filterByType<Expand>(exprs)) {
+    // If the input is a root domain, it is already predicated by the
+    // normal predicate logic
+    if (std::find(consumer_tv->getRootDomain().begin(),
+                  consumer_tv->getRootDomain().end(),
+                  expand->in()) != consumer_tv->getRootDomain().end()) {
+      continue;
+    }
     // TODO: This isn't a predicate for a non-divisible split, but the
     // last argument to the PredicateDomainInfo ctor should be true.
     PredicateDomainInfo info{expand->in(), {expand->in()}, true};

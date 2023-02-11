@@ -54,6 +54,42 @@ TEST_F(NVFuserTest, FusionExpand2_CUDA) {
   fusion.printKernel();
 }
 
+TEST_F(NVFuserTest, FusionExpand3_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+
+  auto tv1 = set(tv0);
+  fusion.addOutput(tv1);
+
+  tv1->expand(0, IrBuilder::create<Int>(1), IrBuilder::create<Int>(2));
+  tv1->merge(0);
+
+
+  fusion.printMath();
+  fusion.printKernel();
+}
+
+TEST_F(NVFuserTest, FusionExpand4_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+
+  auto tv1 = set(tv0);
+  fusion.addOutput(tv1);
+
+  tv1->merge(0);
+
+  tv1->expand(0, IrBuilder::create<Int>(1), IrBuilder::create<Int>(2));
+
+  fusion.printMath();
+  fusion.printKernel();
+}
+
 TEST_F(NVFuserTest, FusionCat1_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);

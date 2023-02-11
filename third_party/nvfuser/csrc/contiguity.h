@@ -309,6 +309,8 @@ class ContigIDs : public OptInDispatch {
   std::unique_ptr<const OrderedIdInformation> consistent_transform_info_;
 
   NonDivisibleSplitDependencies non_divisible_id_info_;
+
+  std::unordered_set<IterDomain*> expand_deps_;
 };
 
 } // namespace cuda

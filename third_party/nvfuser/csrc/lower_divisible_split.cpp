@@ -112,6 +112,12 @@ std::unordered_set<Split*> getAllDivisibleSplits(
     }
   }
 
+  std::cerr << "divisible splits\n";
+  for (auto s : all_divisible_splits) {
+    std::cerr << s->toString();
+  }
+  std::cerr << "divisible splits done\n\n\n\n";
+
   return all_divisible_splits;
 }
 
