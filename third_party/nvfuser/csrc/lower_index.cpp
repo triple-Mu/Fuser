@@ -1328,6 +1328,46 @@ void IndexLowering::allocateUniqueFusedReduction(
   insertAtTopLevel(fused_reduction_alloc_reduction);
 }
 
+void IndexLowering::handle(const PadOp* pad) {
+  // Create the predicate that determines
+  // which of lhs and rhs tensors should be used as the producer. Then
+  // this expr can be converted to where expr
+
+  auto producer_tv = pad->in()->as<TensorView>();
+  auto consumer_tv = pad->out()->as<TensorView>();
+
+  auto producer_doms = TensorDomain::noReductions(producer_tv->getMaybeRFactorDomain());
+
+  const auto in = lowerSrcIndex(pad->in(), pad->out());
+  const auto out = lowerDstIndex(pad->out());
+
+  // Currently it's always padded by zero
+  const auto pad_val = GpuLower::current()->kernel()->zeroVal();
+
+  const auto indices = Index::getProducerPerDimLogicalIndex(
+      producer_tv,
+      consumer_tv, for_loops_);
+
+  Val* pred = IrBuilder::create<Bool>(true);
+
+  // TODO: Currently assumes the start and stop offsets of producer
+  // domains are always zero
+  for (auto padded_axis: pad->getPaddedAxes()) {
+    auto producer_idx = indices.at(padded_axis);
+    auto producer_root_id = producer_doms.at(padded_axis);
+    pred = SimplifyingIrBuilder::andExpr(
+        // idx >= 0 && idx < extent
+        SimplifyingIrBuilder::geExpr(producer_idx,
+                                     GpuLower::current()->kernel()->zeroVal()),
+        SimplifyingIrBuilder::leExpr(producer_idx,
+                                     producer_root_id->extent()));
+  }
+
+  pushBack(
+      IrBuilder::create<TernaryOp>(TernaryOpType::Where, out, pred, in, pad_val));
+  GpuLower::current()->propagateExprInfo(pad, back());
+}
+
 void IndexLowering::handle(const CatOp* cat) {
   // Create the predicate that determines
   // which of lhs and rhs tensors should be used as the producer. Then

@@ -420,6 +420,49 @@ TensorView* cat(TensorView* x, TensorView* y, int dim) {
   return out;
 }
 
+TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
+  const auto& inp_dom = inp->domain()->noReductions();
+
+  const auto ndims = inp->domain()->noReductions().size();
+
+  TORCH_CHECK(
+      pad_widths.size() % 2 == 0 && pad_widths.size() / 2 <= ndims,
+      "Invalid number of padding widths: ",
+      pad_widths.size());
+
+  const auto num_padded_dims = pad_widths.size() / 2;
+
+  std::vector<IterDomain*> out_domain;
+
+  int pad_idx = 0;
+  for (const auto idx : c10::irange(ndims)) {
+    if (idx < num_padded_dims) {
+      out_domain.push_back(inp_dom[idx]->cloneWithoutRFactor());
+    } else {
+      auto left_pad = pad_widths.at(pad_idx++);
+      auto right_pad = pad_widths.at(pad_idx++);
+      auto padded_extent =
+          add(add(inp_dom[idx]->extent(), left_pad), right_pad);
+      auto padded_id =
+          IterDomainBuilder(
+              FusionGuard::getCurFusion()->zeroVal(), padded_extent)
+              .iter_type(IterType::Iteration)
+              .build();
+      std::cerr << "Padded domain: " << padded_id->toString() << std::endl;
+      out_domain.push_back(padded_id);
+    }
+  }
+
+  auto out = IrBuilder::create<TensorView>(
+      IrBuilder::create<TensorDomain>(
+          out_domain, TensorDomain::getContiguousContiguity(out_domain)),
+      *inp->getDataType());
+
+  IrBuilder::create<PadOp>(out, inp, pad_widths);
+
+  return out;
+}
+
 } // namespace cuda
 } // namespace fuser
 } // namespace jit

@@ -314,6 +314,34 @@ TEST_F(NVFuserTest, FusionIterDomainExpand8_CUDA) {
   TORCH_CHECK(t0.equal(cg_outputs[0]));
 }
 
+TEST_F(NVFuserTest, FusionPad1_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  auto tv0 = makeSymbolicTensor(1);
+  fusion.addInput(tv0);
+
+  auto tv1 = pad(tv0, {IrBuilder::create<Int>(1), IrBuilder::create<Int>(1)});
+  fusion.addOutput(tv1);
+
+  fusion.printMath();
+
+  std::cerr << tv1->definition()->as<PadOp>()->getPaddedAxes() << std::endl;
+  PairwiseRootDomainMap map(tv0, tv1);
+  for (auto kv : map.mapProducerToConsumer(tv0->domain(), tv1->domain())) {
+    std::cerr << kv.first->toString() << ", " << kv.second->toString()
+              << std::endl;
+  }
+
+  GpuLower gpulw(&fusion);
+  kir::Kernel* kernel = gpulw.kernel();
+  for (auto expr : kernel->topLevelExprs()) {
+    std::cerr << "Kernel expr: " << expr->toString();
+  }
+
+  fusion.printKernel();
+}
+
 TEST_F(NVFuserTest, FusionCat1_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);

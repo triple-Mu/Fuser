@@ -2228,6 +2228,36 @@ class TORCH_CUDA_CU_API NamedScalar : public Val {
   std::string name_;
 };
 
+class TORCH_CUDA_CU_API PadOp : public Expr {
+ public:
+  using Expr::Expr;
+
+  PadOp(
+      IrBuilderPasskey passkey,
+      TensorView* out,
+      TensorView* inp,
+      std::vector<Val*> pad_widths);
+
+  NVFUSER_DECLARE_CLONE_AND_CREATE
+
+  virtual const char* getOpString() const override {
+    return "PadOp";
+  }
+
+  std::string toString(int indent_size = 0) const override;
+  std::string toInlineString(int indent_size = 0) const override;
+
+  Val* out() const {
+    return output(0);
+  }
+
+  Val* in() const {
+    return input(0);
+  }
+
+  std::vector<int> getPaddedAxes() const;
+};
+
 class TORCH_CUDA_CU_API CatOp : public Expr {
  public:
   using Expr::Expr;

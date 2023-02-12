@@ -71,6 +71,10 @@ TORCH_CUDA_CU_API TensorView* transpose(TensorView* x);
 
 TORCH_CUDA_CU_API TensorView* cat(TensorView* x, TensorView* y, int dim);
 
+TORCH_CUDA_CU_API TensorView* pad(
+    TensorView* x,
+    const std::vector<Val*>& pad_widths);
+
 } // namespace cuda
 } // namespace fuser
 } // namespace jit

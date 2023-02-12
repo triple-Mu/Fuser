@@ -118,7 +118,6 @@ bool isTvOp(const Expr* expr) {
           expr->outputs().end(),
           [](Val* v) { return isTV(v); }) &&
       (expr->isOneOf<
-          CatOp,
           UnaryOp,
           BinaryOp,
           TernaryOp,
@@ -143,6 +142,8 @@ bool isTvOp(const Expr* expr) {
           GatherOp,
           ViewAsScalar,
           ViewOp,
+          PadOp,
+          CatOp,
           kir::GridReduction,
           kir::GroupedGridReduction,
           kir::GridBroadcast,

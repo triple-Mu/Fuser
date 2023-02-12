@@ -327,6 +327,12 @@ class Index {
       const std::vector<kir::ForLoop*>& loops,
       const IndexFromIdGraph& index_from_id_graph);
 
+  static std::vector<Val*> getProducerRootIndices(
+      TensorView* producer,
+      const TensorView* consumer,
+      const std::vector<kir::ForLoop*>& loops,
+      const std::unordered_map<IterDomain*, Val*>& override_index = {});
+
  public:
   // Producer if it's in global memory
   static std::vector<Val*> getGlobalProducerStridedIndices(
@@ -397,6 +403,12 @@ class Index {
   static std::vector<Val*> getPerDimLogicalIndex(
       TensorView* consumer_tv,
       const std::vector<kir::ForLoop*>& loops);
+
+  static std::vector<Val*> getProducerPerDimLogicalIndex(
+      TensorView* producer_tv,
+      const TensorView* consumer_tv,
+      const std::vector<kir::ForLoop*>& loops,
+      const std::unordered_map<IterDomain*, Val*>& override_index = {});
 
   //! Take a consumer tensorview and loop nest and generates predicates
   //! associated with the concrete roots of the loop nest. Returns a list of

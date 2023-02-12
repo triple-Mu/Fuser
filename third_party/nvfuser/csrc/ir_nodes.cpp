@@ -16,6 +16,7 @@
 #include <c10/util/irange.h>
 
 #include <complex>
+#include <numeric>
 #include <regex>
 #include <sstream>
 
@@ -3123,6 +3124,40 @@ c10::optional<ParallelType> NamedScalar::getParallelIndex() const {
     return c10::optional<ParallelType>(ParallelType::BIDz);
   }
   return c10::nullopt;
+}
+
+PadOp::PadOp(
+    IrBuilderPasskey passkey,
+    TensorView* out,
+    TensorView* inp,
+    std::vector<Val*> pad_widths)
+    : Expr(passkey) {
+  addOutput(out);
+  addInput(inp);
+  for (auto width : pad_widths) {
+    addAttribute(width);
+  }
+}
+
+NVFUSER_DEFINE_CLONE_AND_CREATE(PadOp)
+
+std::string PadOp::toString(int indent_size) const {
+  std::stringstream ss;
+  indent(ss, indent_size) << out()->toString() << "\n";
+  indent(ss, indent_size) << "   = pad( " << in()->toString() << " )\n";
+  return ss.str();
+}
+
+std::string PadOp::toInlineString(int indent_size) const {
+  TORCH_CHECK(false, "Tensor op can not be printed inline");
+}
+
+std::vector<int> PadOp::getPaddedAxes() const {
+  auto num_doms = out()->as<TensorView>()->nDims();
+  auto num_padded_axes = attributes_.size() / 2;
+  std::vector<int> padded_axes(num_padded_axes);
+  std::iota(padded_axes.begin(), padded_axes.end(), num_doms - num_padded_axes);
+  return padded_axes;
 }
 
 CatOp::CatOp(
