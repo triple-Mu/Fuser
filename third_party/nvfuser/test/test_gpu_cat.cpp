@@ -324,6 +324,7 @@ TEST_F(NVFuserTest, FusionPad1_CUDA) {
   auto tv1 = pad(tv0, {IrBuilder::create<Int>(1), IrBuilder::create<Int>(1)});
   fusion.addOutput(tv1);
 
+  std::cerr << "tv1: " << tv1->toString() << std::endl;
   fusion.printMath();
 
   std::cerr << tv1->definition()->as<PadOp>()->getPaddedAxes() << std::endl;

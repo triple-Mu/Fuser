@@ -3153,11 +3153,33 @@ std::string PadOp::toInlineString(int indent_size) const {
 }
 
 std::vector<int> PadOp::getPaddedAxes() const {
-  auto num_doms = out()->as<TensorView>()->nDims();
+  auto num_dims = out()->as<TensorView>()->nDims();
   auto num_padded_axes = attributes_.size() / 2;
   std::vector<int> padded_axes(num_padded_axes);
-  std::iota(padded_axes.begin(), padded_axes.end(), num_doms - num_padded_axes);
+  std::iota(padded_axes.begin(), padded_axes.end(), num_dims - num_padded_axes);
   return padded_axes;
+}
+
+std::pair<Val*, Val*> PadOp::getPadWidths(int axis) const {
+  auto num_dims = static_cast<int>(out()->as<TensorView>()->nDims());
+  auto num_padded_axes = static_cast<int>(attributes_.size() / 2);
+
+  if (axis < 0) {
+    axis += num_dims;
+  }
+
+  TORCH_CHECK(axis >= 0 && axis < num_dims, "Invalid axis: ", axis);
+
+  // Just return zero for non padded domains
+  if (axis < num_dims - num_padded_axes) {
+    return std::make_pair(container()->zeroVal(), container()->zeroVal());
+  }
+
+  auto pad_idx = axis - (num_dims - num_padded_axes);
+  TORCH_INTERNAL_ASSERT(pad_idx >= 0 && pad_idx < num_dims);
+
+  return std::make_pair(
+      attribute(pad_idx)->as<Val>(), attribute(pad_idx + 1)->as<Val>());
 }
 
 CatOp::CatOp(

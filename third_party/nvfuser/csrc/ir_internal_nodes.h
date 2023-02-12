@@ -2256,6 +2256,8 @@ class TORCH_CUDA_CU_API PadOp : public Expr {
   }
 
   std::vector<int> getPaddedAxes() const;
+
+  std::pair<Val*, Val*> getPadWidths(int axis) const;
 };
 
 class TORCH_CUDA_CU_API CatOp : public Expr {

@@ -431,12 +431,15 @@ TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
       pad_widths.size());
 
   const auto num_padded_dims = pad_widths.size() / 2;
+  const auto num_non_padded_dims = ndims - num_padded_dims;
+
+  std::cerr << "num_padded_dims: " << num_padded_dims << std::endl;
 
   std::vector<IterDomain*> out_domain;
 
   int pad_idx = 0;
   for (const auto idx : c10::irange(ndims)) {
-    if (idx < num_padded_dims) {
+    if (idx < num_non_padded_dims) {
       out_domain.push_back(inp_dom[idx]->cloneWithoutRFactor());
     } else {
       auto left_pad = pad_widths.at(pad_idx++);

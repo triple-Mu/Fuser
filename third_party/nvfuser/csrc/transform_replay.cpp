@@ -246,6 +246,30 @@ std::unordered_set<IterDomain*> getMaybeUnmappedIDs(
   return all_unmapped_ids;
 }
 
+void expandProducerRootDomain(
+    const TensorView* producer_tv,
+    const TensorView* consumer_tv,
+    id_map& id_map) {
+  auto c2p =
+      PairwiseRootDomainMap(producer_tv, consumer_tv, false, false)
+          .mapConsumerToProducer(consumer_tv->domain(), producer_tv->domain());
+  if (auto pad = dynamic_cast<PadOp*>(consumer_tv->definition())) {
+    const auto& consumer_root_dom = consumer_tv->getRootDomain();
+    for (auto padded_axis : pad->getPaddedAxes()) {
+      auto consumer_root_id = consumer_root_dom.at(padded_axis);
+      auto producer_root_id = c2p.at(consumer_root_id);
+      const auto pad_widths = pad->getPadWidths(padded_axis);
+      auto producer_expanded_id = IterDomain::expand(
+          producer_root_id, pad_widths.first, pad_widths.second);
+      std::cerr << "Map consumer id to producuer expanded id: "
+                << consumer_root_id->toString() << ", "
+                << producer_root_id->toString() << ", "
+                << producer_expanded_id->toString() << std::endl;
+      id_map[consumer_root_id] = producer_expanded_id;
+    }
+  }
+}
+
 } // namespace
 
 // Producer could have rfactor axes which consumer may want replayed. We can
@@ -300,6 +324,8 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
       forwarded_replay_leaves.erase(entry.second);
     }
   }
+
+  expandProducerRootDomain(producer, consumer, forwarded_replay_map);
 
   // Replay producer dimensions.
   ReplayTransformations replay_PasC(
@@ -476,6 +502,8 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
       new_IDs,
       producer->domain()->contiguity());
 
+  std::cerr << "Replayed producer domain: " << replayed->toString()
+            << std::endl;
   return {replayed, producer_pos};
 }
 
