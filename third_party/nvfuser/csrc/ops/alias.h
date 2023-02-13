@@ -69,7 +69,9 @@ TORCH_CUDA_CU_API TensorView* transpose(
 //! Transpose a 2D tensor.
 TORCH_CUDA_CU_API TensorView* transpose(TensorView* x);
 
-TORCH_CUDA_CU_API TensorView* cat(TensorView* x, TensorView* y, int dim);
+TORCH_CUDA_CU_API TensorView* cat(
+    const std::vector<TensorView*>& inputs,
+    int dim);
 
 TORCH_CUDA_CU_API TensorView* pad(
     TensorView* x,

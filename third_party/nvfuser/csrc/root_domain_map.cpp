@@ -120,10 +120,12 @@ std::unordered_map<IterDomain*, IterDomain*> PairwiseRootDomainMap::map(
     select_skip_consumer = true;
   }
 
+#if 0  
   IterDomain* concat_id = nullptr;
   if (auto cat = dynamic_cast<CatOp*>(consumer_tv_->definition())) {
     concat_id = consumer->getRootDomain().at(cat->dim());
   }
+#endif
 
   std::unordered_map<IterDomain*, IterDomain*> dom_map;
   const auto producer_root =
@@ -179,7 +181,7 @@ std::unordered_map<IterDomain*, IterDomain*> PairwiseRootDomainMap::map(
         continue;
       }
     }
-#endif
+
 
     if (require_same_extent_ && concat_id != nullptr &&
         consumer_id == concat_id) {
@@ -187,7 +189,7 @@ std::unordered_map<IterDomain*, IterDomain*> PairwiseRootDomainMap::map(
       itp++;
       continue;
     }
-
+#endif
     IterDomain* map_key_id = producer_id;
     IterDomain* map_value_id = consumer_id;
     if (!producer_to_consumer) {

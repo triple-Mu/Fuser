@@ -2237,7 +2237,7 @@ class TORCH_CUDA_CU_API PadOp : public Expr {
       IrBuilderPasskey passkey,
       TensorView* out,
       TensorView* inp,
-      std::vector<Val*> pad_widths);
+      const std::vector<Val*>& pad_widths);
 
   NVFUSER_DECLARE_CLONE_AND_CREATE
 
@@ -2267,10 +2267,17 @@ class TORCH_CUDA_CU_API CatOp : public Expr {
 
   CatOp(
       IrBuilderPasskey passkey,
-      TensorView* out,
-      TensorView* lhs,
-      TensorView* rhs,
-      int dim);
+      Val* out,
+      const std::vector<Val*>& inputs,
+      int concatenated_dim);
+
+  CatOp(
+      IrBuilderPasskey passkey,
+      Val* out,
+      const std::vector<Val*>& inputs,
+      int concatenated_dim,
+      Val* concatenated_domain_index,
+      const std::vector<Bool*>& preds);
 
   NVFUSER_DECLARE_CLONE_AND_CREATE
 
@@ -2281,21 +2288,13 @@ class TORCH_CUDA_CU_API CatOp : public Expr {
   std::string toString(int indent_size = 0) const override;
   std::string toInlineString(int indent_size = 0) const override;
 
-  Val* out() const {
-    return output(0);
-  }
-
-  Val* lhs() const {
-    return input(0);
-  }
-
-  Val* rhs() const {
-    return input(1);
-  }
-
-  int dim() const {
+  int concatenatedDim() const {
     return attribute(0)->as<Attribute<int>>()->value;
   }
+
+  Val* getConcatenatedDomainIndex() const;
+
+  Bool* getPred(int input_idx) const;
 };
 
 } // namespace cuda

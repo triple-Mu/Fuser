@@ -374,48 +374,288 @@ TensorView* transpose(TensorView* x) {
   return transpose(x, 0, 1);
 }
 
-TensorView* cat(TensorView* x, TensorView* y, int dim) {
-  const auto& x_dom = x->domain()->noReductions();
-  const auto& y_dom = y->domain()->noReductions();
-  const auto ndims = static_cast<int>(x->domain()->noReductions().size());
+namespace {
+Val* simplifiedInt(Val* val) {
+  TORCH_INTERNAL_ASSERT(
+      val->isConstInt(), "Expecting Const Int's only in this routine.");
+  if (val->as<Int>()->value().has_value()) {
+    return val;
+  }
+  return IrBuilder::create<Int>(val->evaluateInt());
+}
 
-  std::vector<IterDomain*> out_domain;
-  for (const auto idx : c10::irange(ndims)) {
-    if (idx != dim) {
-      out_domain.push_back(x_dom[idx]->cloneWithoutRFactor());
-    } else {
-      auto x_id = x_dom[idx];
-      auto y_id = y_dom[idx];
-      for (auto id_to_concat : {x_id, y_id}) {
-        TORCH_CHECK(
-            !id_to_concat->isBroadcast(),
-            "Invalid domain to concat: ",
-            id_to_concat->toString());
-        // TODO: what about expanded domains?
-        // Ignore partial domains for now
-        TORCH_CHECK(
-            !id_to_concat->maybePartial(),
-            "Invalid domain to concat: ",
-            id_to_concat->toString());
-        auto concatenated_extent = add(x_id->extent(), y_id->extent());
-        auto concatenated_id =
-            IterDomainBuilder(
-                FusionGuard::getCurFusion()->zeroVal(), concatenated_extent)
-                .iter_type(IterType::Iteration)
-                .build();
-        std::cerr << "Concatenated domain: " << concatenated_id->toString()
-                  << std::endl;
-        out_domain.push_back(concatenated_id);
+Val* promoteSize(Val* v1, Val* v2) {
+  if (v1 == nullptr) {
+    TORCH_INTERNAL_ASSERT(
+        v2 == nullptr || v2->isIntegralScalar(),
+        "Expecting Int's only in this routine.");
+    return v2;
+  }
+  if (v2 == nullptr) {
+    return v1;
+  }
+  TORCH_INTERNAL_ASSERT(
+      v1->isIntegralScalar() && v2->isIntegralScalar(),
+      "Expecting Int's only in this routine.");
+
+  if (!v1->isConstInt() && !v2->isConstInt()) {
+    return v1;
+  } else if (v1->isConstInt() && v2->isConstInt()) {
+    TORCH_INTERNAL_ASSERT(
+        v1->evaluateInt() == v2->evaluateInt(),
+        "Expected sizes of, ",
+        v1->toString(),
+        " and ",
+        v2->toString(),
+        " to match but found ",
+        v1->evaluateInt(),
+        " and ",
+        v2->evaluateInt(),
+        ".");
+    return simplifiedInt(v1);
+  } else if (v1->isConstInt()) {
+    return simplifiedInt(v1);
+  }
+  return simplifiedInt(v2);
+}
+
+IterType promoteIterType(IterType type1, IterType type2) {
+  // Iteration: Default
+  // Reduction: Should not appear here
+  // Broadcast: Propagated only if type1 and type2 are Broadcast
+  // Gather: Converted to Iteration
+  // Stride: Shold not appear here
+  // VectorComponent: Converted to Iteration
+
+  TORCH_INTERNAL_ASSERT(
+      type1 != IterType::Reduction && type1 != IterType::Stride,
+      "Invalid IterType: ",
+      type1)
+  TORCH_INTERNAL_ASSERT(
+      type2 != IterType::Reduction && type2 != IterType::Stride,
+      "Invalid IterType: ",
+      type2);
+
+  // Do not propagate Gather and VectorComponent
+  if (type1 == IterType::Gather || type1 == IterType::VectorComponent ||
+      type1 == IterType::GatherScatter) {
+    type1 = IterType::Iteration;
+  }
+  if (type2 == IterType::Gather || type2 == IterType::VectorComponent ||
+      type2 == IterType::GatherScatter) {
+    type2 = IterType::Iteration;
+  }
+
+  // At this point, type1 and type2 must be either Iteration or
+  // Broadcast
+  TORCH_INTERNAL_ASSERT(
+      type1 == IterType::Iteration || type1 == IterType::Broadcast,
+      "Unexpected IterType: ",
+      type1);
+  TORCH_INTERNAL_ASSERT(
+      type2 == IterType::Iteration || type2 == IterType::Broadcast,
+      "Unexpected IterType: ",
+      type2);
+
+  if (type1 == IterType::Broadcast) {
+    return type2;
+  } else {
+    return type1;
+  }
+}
+
+TensorView* newOutputTV(const std::vector<Val*>& vals, DataType dtype) {
+  std::vector<TensorView*> tvs;
+  for (auto val : vals) {
+    if (val->getValType() == ValType::TensorView) {
+      tvs.push_back(val->as<TensorView>());
+    }
+  }
+  TORCH_CHECK(
+      !tvs.empty(),
+      "Tried to create new output TensorView but received empty list.");
+
+  std::vector<IterDomain*> out_domain(
+      TensorDomain::noReductions(tvs[0]->getMaybeRFactorDomain()).size(),
+      nullptr);
+
+  // For the start and stop offsets, take the maximum of input axes.
+  // For now, the offsets of both start and stop are always integer
+  // constant, so we can statically compute them. It is unclear
+  // whether we would need to support dynamic offsetting, e.g.,
+  // shifting by a dynamic offset.
+  std::vector<int64_t> start_offsets(out_domain.size(), 0);
+  std::vector<int64_t> stop_offsets(out_domain.size(), 0);
+  std::vector<Val*> extent_vals(out_domain.size(), nullptr);
+  std::vector<Val*> expanded_extent_vals(out_domain.size(), nullptr);
+  std::vector<c10::optional<IterType>> iter_types(
+      out_domain.size(), c10::nullopt);
+
+  for (auto tv : tvs) {
+    auto dom = TensorDomain::noReductions(tv->getMaybeRFactorDomain());
+    TORCH_INTERNAL_ASSERT(
+        dom.size() == out_domain.size(),
+        "Invalid tensor view found while producing an output, it has ",
+        dom.size(),
+        " dimensions but expected ",
+        out_domain.size());
+    for (const auto i : c10::irange(dom.size())) {
+      if (dom[i]->isBroadcast()) {
+        if (dom[i]->hasExpandedExtent()) {
+          expanded_extent_vals[i] =
+              promoteSize(expanded_extent_vals[i], dom[i]->expandedExtent());
+        }
+        continue;
       }
+      extent_vals[i] = promoteSize(extent_vals[i], dom[i]->extent());
+      if (iter_types[i].has_value()) {
+        iter_types[i] =
+            promoteIterType(iter_types[i].value(), dom[i]->getIterType());
+      } else {
+        iter_types[i] = dom[i]->getIterType();
+      }
+
+      auto start_offset = dom[i]->start()->as<Int>();
+      auto stop_offset = dom[i]->stopOffset()->as<Int>();
+      // Currently, start is always constant
+      TORCH_INTERNAL_ASSERT(
+          start_offset->isConstInt(),
+          "Invalid IterDomain start: ",
+          start_offset);
+      TORCH_INTERNAL_ASSERT(
+          stop_offset->isConstInt(),
+          "Invalid IterDomain stop offset: ",
+          stop_offset);
+      start_offsets[i] =
+          std::max(start_offsets[i], start_offset->evaluateInt());
+      stop_offsets[i] = std::max(stop_offsets[i], stop_offset->evaluateInt());
+    }
+  }
+  for (const auto dim_i : c10::irange(out_domain.size())) {
+    if (extent_vals[dim_i] != nullptr) {
+      TORCH_INTERNAL_ASSERT(
+          iter_types[dim_i].has_value(),
+          "Could not deduce iter type for new tensor view.");
+      out_domain[dim_i] =
+          IterDomainBuilder(
+              IrBuilder::create<Int>(start_offsets[dim_i]), extent_vals[dim_i])
+              .stop_offset(IrBuilder::create<Int>(stop_offsets[dim_i]))
+              .iter_type(iter_types[dim_i].value())
+              .build();
+    } else {
+      out_domain[dim_i] = IterDomainBuilder(
+                              FusionGuard::getCurFusion()->zeroVal(),
+                              FusionGuard::getCurFusion()->oneVal())
+                              .expanded_extent(expanded_extent_vals[dim_i])
+                              .iter_type(IterType::Broadcast)
+                              .build();
     }
   }
 
-  auto out = IrBuilder::create<TensorView>(
+  return IrBuilder::create<TensorView>(
       IrBuilder::create<TensorDomain>(
           out_domain, TensorDomain::getContiguousContiguity(out_domain)),
-      *x->getDataType());
+      dtype);
+}
 
-  IrBuilder::create<CatOp>(out, x, y, dim);
+} // namespace
+
+TensorView* cat(const std::vector<TensorView*>& inputs, int cat_dim) {
+  TORCH_CHECK(!inputs.empty(), "No input given");
+
+  const auto dtype = inputs.at(0)->getDataType().value();
+
+  std::vector<std::vector<IterDomain*>> inp_doms;
+  int ndims = -1;
+
+  for (auto inp : inputs) {
+    TORCH_CHECK(
+        inp->getDataType().value() == dtype,
+        "Can't concatenate tensors with different data types: ",
+        dtype,
+        ", ",
+        inp->getDataType().value());
+    inp_doms.emplace_back(
+        TensorDomain::noReductions(inp->getMaybeRFactorDomain()));
+    auto i_ndims = static_cast<int>(inp_doms.back().size());
+    if (ndims == -1) {
+      ndims = i_ndims;
+    } else {
+      TORCH_CHECK(
+          ndims == i_ndims,
+          "Unexpected number of dimensions: ",
+          inp->toString(),
+          ", expected: ",
+          ndims);
+    }
+  }
+
+  if (cat_dim < 0) {
+    cat_dim += ndims;
+  }
+
+  TORCH_CHECK(
+      cat_dim >= 0 && cat_dim < ndims, "Invalid dimension to cat: ", cat_dim);
+
+  Val* concat_ext = nullptr;
+
+  for (const auto i : c10::irange(inputs.size())) {
+    // TODO: expanded extent?
+    concat_ext = SimplifyingIrBuilder::addExpr(
+        concat_ext, inp_doms.at(i).at(cat_dim)->extent());
+  }
+
+  // Create a new rfactor tensor by padding the concat dim.
+  Val* left_pad = FusionGuard::getCurFusion()->zeroVal();
+  Val* right_pad = concat_ext;
+  std::vector<Val*> expanded_inputs(inputs.size());
+  for (const auto input_idx : c10::irange(inputs.size())) {
+    const auto& inp_dom = inp_doms.at(input_idx);
+    std::vector<IterDomain*> root_ids(ndims);
+    std::vector<IterDomain*> rfactor_ids(ndims);
+    std::vector<Val*> pad_widths(ndims * 2);
+    for (const auto dim : c10::irange(ndims)) {
+      auto inp_id = inp_dom.at(dim);
+      auto root_id = inp_id->cloneWithoutRFactor();
+      root_ids.at(dim) = root_id;
+      if (dim != cat_dim) {
+        rfactor_ids.at(dim) = root_id;
+        pad_widths.at(dim * 2) = FusionGuard::getCurFusion()->zeroVal();
+        pad_widths.at(dim * 2 + 1) = FusionGuard::getCurFusion()->zeroVal();
+      } else {
+        // TODO: what to do if inp_id is not a normal iterdomain, i.e.,
+        // broadcast, partial, etc?
+        right_pad = sub(right_pad, inp_id->extent());
+        auto expanded_id =
+            IterDomain::expand(root_id, left_pad, right_pad, true);
+        std::cerr << "Expanded domain: " << expanded_id->toString()
+                  << std::endl;
+        rfactor_ids.at(dim) = expanded_id;
+        pad_widths.at(dim * 2) = left_pad;
+        pad_widths.at(dim * 2 + 1) = right_pad;
+        left_pad = add(left_pad, inp_id->extent());
+      }
+    }
+
+    auto expanded_inp = IrBuilder::create<TensorView>(
+        IrBuilder::create<TensorDomain>(
+            root_ids,
+            rfactor_ids,
+            rfactor_ids,
+            TensorDomain::getContiguousContiguity(rfactor_ids)),
+        dtype);
+
+    IrBuilder::create<PadOp>(expanded_inp, inputs.at(input_idx), pad_widths);
+
+    expanded_inputs.at(input_idx) = expanded_inp;
+  }
+
+  // At this point, left_pad should be equal to concat_ext, and
+  // right_pad should be zero
+
+  auto out = newOutputTV(expanded_inputs, dtype);
+
+  IrBuilder::create<CatOp>(out, expanded_inputs, cat_dim);
 
   return out;
 }
@@ -447,18 +687,8 @@ TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
     } else {
       auto left_pad = pad_widths.at(pad_idx++);
       auto right_pad = pad_widths.at(pad_idx++);
-#if 0
-      auto padded_extent =
-          add(add(inp_dom[idx]->extent(), left_pad), right_pad);
-      auto padded_id =
-          IterDomainBuilder(
-              FusionGuard::getCurFusion()->zeroVal(), padded_extent)
-              .iter_type(IterType::Iteration)
-              .build();
-#else
       auto padded_id =
           IterDomain::expand(consumer_root, left_pad, right_pad, true);
-#endif
       std::cerr << "Padded domain: " << padded_id->toString() << std::endl;
       rfactor_ids.at(idx) = padded_id;
     }

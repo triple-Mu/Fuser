@@ -332,7 +332,7 @@ std::string toDelimitedString(
     if (!first_val) {
       ss << delim;
     }
-    ss << *it;
+    ss << Printer<typename Iterator::value_type>::toString(*it);
     first_val = false;
   }
   return ss.str();

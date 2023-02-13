@@ -1371,20 +1371,36 @@ void IndexLowering::handle(const PadOp* pad) {
 }
 
 void IndexLowering::handle(const CatOp* cat) {
-  // Create the predicate that determines
-  // which of lhs and rhs tensors should be used as the producer. Then
-  // this expr can be converted to where expr
+  // It's possible to lower CatOp to a series of IfThenElse or Where,
+  // but
+  const auto out = lowerDstIndex(cat->output(0));
+  auto out_indices = Index::getPerDimLogicalIndex(
+      cat->output(0)->as<TensorView>(), for_loops_);
+  auto concatenated_dim_idx = out_indices.at(cat->concatenatedDim());
 
-  const auto lhs = lowerSrcIndex(cat->lhs(), cat->out());
-  const auto rhs = lowerSrcIndex(cat->rhs(), cat->out());
-  const auto out = lowerDstIndex(cat->out());
+  std::vector<Val*> inputs(cat->inputs().size());
+  std::vector<Bool*> preds(cat->inputs().size());
+  Val* cur_extent = GpuLower::current()->kernel()->zeroVal();
 
-  // TODO:
-  auto pred = IrBuilder::create<Bool>(true);
+  for (const auto i : c10::irange(cat->inputs().size())) {
+    const auto inp = lowerSrcIndex(cat->input(i), cat->output(0));
+    inputs.at(i) = inp;
 
-  pushBack(
-      IrBuilder::create<TernaryOp>(TernaryOpType::Where, out, pred, lhs, rhs));
-  GpuLower::current()->propagateExprInfo(cat, back());
+    // Note the original extent is the extent of the root domain not
+    // rfactor domain
+    auto inp_concat_id = TensorDomain::noReductions(
+                             cat->input(i)->as<TensorView>()->getRootDomain())
+                             .at(cat->concatenatedDim());
+    cur_extent = add(cur_extent, inp_concat_id->extent());
+    preds.at(i) =
+        IrBuilder::ltExpr(concatenated_dim_idx, cur_extent)->as<Bool>();
+  }
+
+  auto lowered = IrBuilder::create<CatOp>(
+      out, inputs, cat->concatenatedDim(), concatenated_dim_idx, preds);
+
+  pushBack(lowered);
+  GpuLower::current()->propagateExprInfo(cat, lowered);
 }
 
 } // namespace cuda

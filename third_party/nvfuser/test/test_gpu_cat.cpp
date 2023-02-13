@@ -5,6 +5,7 @@
 #include <fusion.h>
 #include <inlining.h>
 #include <ops/all_ops.h>
+#include <scheduler/utils.h>
 #include <test/test_gpu_validator.h>
 #include <test/test_utils.h>
 
@@ -640,24 +641,215 @@ TEST_F(NVFuserTest, FusionCat1_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
+  std::vector<int64_t> shape0({2});
+  std::vector<int64_t> shape1({3});
+
+  auto tv0 = makeConcreteTensor(shape0);
+  fusion.addInput(tv0);
+
+  auto tv1 = makeConcreteTensor(shape1);
+  fusion.addInput(tv1);
+
+  auto tv2 = cat({tv0, tv1}, 0);
+  fusion.addOutput(tv2);
+
+  fusion.printMath();
+  fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape0, options);
+  auto t1 = at::randn(shape1, options);
+  std::vector<IValue> aten_inputs({t0, t1});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  auto ref = at::cat({t0, t1}, 0);
+
+  std::cout << "In0: " << t0 << std::endl;
+  std::cout << "In1: " << t1 << std::endl;
+  std::cout << "Ref: " << ref << std::endl;
+  std::cout << "CG: " << cg_outputs[0] << std::endl;
+
+  TORCH_CHECK(ref.equal(cg_outputs[0]));
+}
+
+TEST_F(NVFuserTest, FusionCat2_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  std::vector<int64_t> shape0({2, 4});
+  std::vector<int64_t> shape1({3, 4});
+
+  auto tv0 = makeConcreteTensor(shape0);
+  fusion.addInput(tv0);
+
+  auto tv1 = makeConcreteTensor(shape1);
+  fusion.addInput(tv1);
+
+  auto tv2 = cat({tv0, tv1}, 0);
+  fusion.addOutput(tv2);
+
+  fusion.printMath();
+  fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape0, options);
+  auto t1 = at::randn(shape1, options);
+  std::vector<IValue> aten_inputs({t0, t1});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  auto ref = at::cat({t0, t1}, 0);
+
+  TORCH_CHECK(ref.equal(cg_outputs[0]));
+}
+
+TEST_F(NVFuserTest, FusionCat3_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  std::vector<int64_t> shape0({4, 2});
+  std::vector<int64_t> shape1({4, 3});
+
   auto tv0 = makeSymbolicTensor(2);
   fusion.addInput(tv0);
 
   auto tv1 = makeSymbolicTensor(2);
   fusion.addInput(tv1);
 
-  auto tv2 = cat(tv0, tv1, 0);
+  auto tv2 = cat({tv0, tv1}, 1);
   fusion.addOutput(tv2);
 
+  tv2->merge(0);
+  tv2->split(0, 4);
+
+  TransformPropagator propagator(tv2);
+  MaxRootDomainInfoSpanningTree(tv2).traverse(&propagator);
+
+  inlineMost();
+
   fusion.printMath();
-
-  GpuLower gpulw(&fusion);
-  kir::Kernel* kernel = gpulw.kernel();
-  for (auto expr : kernel->topLevelExprs()) {
-    std::cerr << "Kernel expr: " << expr->toString();
-  }
-
   fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape0, options);
+  auto t1 = at::randn(shape1, options);
+  std::vector<IValue> aten_inputs({t0, t1});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  auto ref = at::cat({t0, t1}, 1);
+
+  TORCH_CHECK(ref.equal(cg_outputs[0]));
+}
+
+TEST_F(NVFuserTest, FusionCat4_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  std::vector<int64_t> shape0({11, 12});
+  std::vector<int64_t> shape1({11, 13});
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+
+  auto tv1 = makeSymbolicTensor(2);
+  fusion.addInput(tv1);
+
+  auto tv2 = cat({tv0, tv1}, 1);
+  fusion.addOutput(tv2);
+
+  tv2->merge(0);
+  tv2->split(0, 128);
+
+  TransformPropagator propagator(tv2);
+  MaxRootDomainInfoSpanningTree(tv2).traverse(&propagator);
+
+  tv2->axis(0)->parallelize(ParallelType::BIDx);
+  tv2->axis(1)->parallelize(ParallelType::TIDx);
+
+  inlineMost();
+
+  fusion.printMath();
+  fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape0, options);
+  auto t1 = at::randn(shape1, options);
+  std::vector<IValue> aten_inputs({t0, t1});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  auto ref = at::cat({t0, t1}, 1);
+
+  TORCH_CHECK(ref.equal(cg_outputs[0]));
+}
+
+TEST_F(NVFuserTest, FusionCat5_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+  auto tv1 = makeSymbolicTensor(2);
+  fusion.addInput(tv1);
+  auto tv2 = makeSymbolicTensor(2);
+  fusion.addInput(tv2);
+
+  auto tv3 = cat({tv0, tv1}, 1);
+  auto tv4 = add(tv3, tv2);
+  fusion.addOutput(tv4);
+
+  tv4->merge(0);
+  tv4->split(0, 128);
+
+  TransformPropagator propagator(tv4);
+  MaxRootDomainInfoSpanningTree(tv4).traverse(&propagator);
+
+  inlineMost();
+
+  tv4->axis(0)->parallelize(ParallelType::BIDx);
+  tv4->axis(1)->parallelize(ParallelType::TIDx);
+  scheduler_utils::parallelizeAllLike(tv4);
+
+  fusion.printMath();
+  fusion.printKernel();
+
+  std::vector<int64_t> shape0({11, 12});
+  std::vector<int64_t> shape1({shape0[0], 13});
+  std::vector<int64_t> shape2({shape0[0], shape0[1] + shape1[1]});
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape0, options);
+  auto t1 = at::randn(shape1, options);
+  auto t2 = at::randn(shape2, options);
+  std::vector<IValue> aten_inputs({t0, t1, t2});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  auto ref = at::cat({t0, t1}, 1) + t2;
+
+  TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
 } // namespace jit

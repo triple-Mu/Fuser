@@ -2762,6 +2762,31 @@ class CudaKernelGenerator : private OptOutConstDispatch {
     indent() << "NVFUSER_UPDATE_MAGIC_ZERO\n";
   }
 
+  void handle(const CatOp* cat) final {
+    auto out = gen(cat->output(0));
+    auto cat_idx = gen(cat->getConcatenatedDomainIndex());
+
+    for (const auto i : c10::irange(cat->inputs().size())) {
+      auto inp = cat->input(i)->as<kir::TensorIndex>();
+      auto inp_str = gen(inp);
+      if (i < cat->inputs().size() - 1) {
+        if (i == 0) {
+          indent() << "if (";
+        } else {
+          indent() << "} else if (";
+        }
+        code_ << gen(cat->getPred(i)) << ") {\n";
+      } else {
+        // last case doesn't need to be predicated
+        indent() << "} else {\n";
+      }
+
+      indent() << kTab << out << " = " << gen(inp) << ";\n";
+    }
+
+    indent() << "}\n";
+  }
+
  private:
   std::stringstream code_;
   const kir::Kernel* kernel_;

@@ -502,8 +502,6 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
       new_IDs,
       producer->domain()->contiguity());
 
-  std::cerr << "Replayed producer domain: " << replayed->toString()
-            << std::endl;
   return {replayed, producer_pos};
 }
 

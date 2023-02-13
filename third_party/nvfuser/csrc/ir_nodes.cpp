@@ -3132,7 +3132,7 @@ PadOp::PadOp(
     IrBuilderPasskey passkey,
     TensorView* out,
     TensorView* inp,
-    std::vector<Val*> pad_widths)
+    const std::vector<Val*>& pad_widths)
     : Expr(passkey) {
   addOutput(out);
   addInput(inp);
@@ -3186,29 +3186,67 @@ std::pair<Val*, Val*> PadOp::getPadWidths(int axis) const {
 
 CatOp::CatOp(
     IrBuilderPasskey passkey,
-    TensorView* out,
-    TensorView* x,
-    TensorView* y,
-    int dim)
+    Val* out,
+    const std::vector<Val*>& inputs,
+    int concatenated_dim)
     : Expr(passkey) {
   addOutput(out);
-  addInput(x);
-  addInput(y);
-  addAttribute(IrBuilder::create<Attribute<int>>(passkey.ir_container_, dim));
+  for (auto inp : inputs) {
+    addInput(inp);
+  }
+  addAttribute(IrBuilder::create<Attribute<int>>(
+      passkey.ir_container_, concatenated_dim));
+}
+
+CatOp::CatOp(
+    IrBuilderPasskey passkey,
+    Val* out,
+    const std::vector<Val*>& inputs,
+    int concatenated_dim,
+    Val* concatenated_domain_index,
+    const std::vector<Bool*>& preds)
+    : Expr(passkey) {
+  addOutput(out);
+  for (auto inp : inputs) {
+    addInput(inp);
+  }
+  addAttribute(IrBuilder::create<Attribute<int>>(
+      passkey.ir_container_, concatenated_dim));
+  addAttribute(concatenated_domain_index);
+  for (auto pred : preds) {
+    addAttribute(pred);
+  }
 }
 
 NVFUSER_DEFINE_CLONE_AND_CREATE(CatOp)
 
 std::string CatOp::toString(int indent_size) const {
   std::stringstream ss;
-  indent(ss, indent_size) << out()->toString() << "\n";
-  indent(ss, indent_size) << "   = cat( " << lhs()->toString() << ", "
-                          << rhs()->toString() << " )\n";
+  indent(ss, indent_size) << output(0)->toString() << "\n";
+  indent(ss, indent_size) << "   = cat( ";
+  toDelimitedString(inputs());
+  ss << " )\n";
   return ss.str();
 }
 
 std::string CatOp::toInlineString(int indent_size) const {
   TORCH_CHECK(false, "Tensor op can not be printed inline");
+}
+
+Val* CatOp::getConcatenatedDomainIndex() const {
+  TORCH_INTERNAL_ASSERT(attributes().size() > 0);
+  TORCH_INTERNAL_ASSERT(attribute(1) != nullptr);
+  auto idx = attribute(1)->as<Val>();
+  return idx;
+}
+
+Bool* CatOp::getPred(int input_idx) const {
+  auto attr_idx = input_idx + 2;
+  TORCH_INTERNAL_ASSERT(attr_idx < static_cast<int>(attributes().size()));
+  auto attr = attribute(attr_idx);
+  TORCH_INTERNAL_ASSERT(attr != nullptr && attr->isA<Bool>());
+  auto pred = attr->as<Bool>();
+  return pred;
 }
 
 } // namespace cuda
