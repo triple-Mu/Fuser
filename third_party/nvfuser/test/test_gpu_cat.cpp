@@ -461,11 +461,11 @@ TEST_F(NVFuserTest, FusionPad3_CUDA) {
   std::vector<int64_t> shape({9, 11});
   std::vector<int64_t> padded_shape({9, 11 + 2});
 
-  // auto tv0 = makeSymbolicTensor(2);
-  auto tv0 = makeConcreteTensor(shape);
+  auto tv0 = makeSymbolicTensor(2);
+  // auto tv0 = makeConcreteTensor(shape);
   fusion.addInput(tv0);
-  // auto tv1 = makeSymbolicTensor(2);
-  auto tv1 = makeConcreteTensor(padded_shape);
+  auto tv1 = makeSymbolicTensor(2);
+  // auto tv1 = makeConcreteTensor(padded_shape);
   fusion.addInput(tv1);
 
   auto tv2 = set(tv0);
@@ -512,6 +512,126 @@ TEST_F(NVFuserTest, FusionPad3_CUDA) {
   std::cerr << "ref: " << ref << std::endl;
   std::cerr << "cg: " << cg_outputs[0] << std::endl;
 #endif
+
+  testValidate(&fusion, cg_outputs, aten_inputs, {ref}, __LINE__, __FILE__);
+}
+
+TEST_F(NVFuserTest, FusionPad4_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  std::vector<int64_t> shape({9});
+
+  auto tv0 = makeSymbolicTensor(1);
+  fusion.addInput(tv0);
+
+  auto tv1 = pad(tv0, {IrBuilder::create<Int>(1), IrBuilder::create<Int>(1)});
+  fusion.addOutput(tv1);
+
+  tv1->axis(0)->parallelize(ParallelType::TIDx);
+
+  fusion.printMath();
+  fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape, options);
+  std::vector<IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  auto ref = at::pad(t0, {1, 1});
+
+  TORCH_CHECK(ref.equal(cg_outputs[0]));
+}
+
+TEST_F(NVFuserTest, FusionPad5_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  std::vector<int64_t> shape({9});
+
+  auto tv0 = makeSymbolicTensor(1);
+  fusion.addInput(tv0);
+
+  auto tv1 = set(tv0);
+  auto tv2 = pad(tv1, {IrBuilder::create<Int>(1), IrBuilder::create<Int>(1)});
+  fusion.addOutput(tv2);
+
+  tv1->axis(0)->parallelize(ParallelType::TIDx);
+  tv2->axis(0)->parallelize(ParallelType::TIDx);
+
+  tv1->setMemoryType(MemoryType::Shared);
+
+  fusion.printMath();
+  fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape, options);
+  std::vector<IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  auto ref = at::pad(t0, {1, 1});
+
+  TORCH_CHECK(ref.equal(cg_outputs[0]));
+}
+
+TEST_F(NVFuserTest, FusionPad6_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  std::vector<int64_t> shape({99, 111});
+  std::vector<int64_t> padded_shape({shape[0], shape[1] + 2});
+
+  auto tv0 = makeConcreteTensor(shape);
+  fusion.addInput(tv0);
+  auto tv1 = makeConcreteTensor(padded_shape);
+  fusion.addInput(tv1);
+
+  auto tv2 = add(tv0, IrBuilder::create<Double>(1));
+  auto tv3 = pad(tv2, {IrBuilder::create<Int>(1), IrBuilder::create<Int>(1)});
+  auto tv4 = add(tv3, tv1);
+  fusion.addOutput(tv4);
+
+  fusion.printMath();
+
+  tv4->merge(0);
+  tv4->split(0, 32);
+
+  TransformPropagator propagator(tv4);
+  MaxRootDomainInfoSpanningTree(tv4).traverse(&propagator);
+
+  inlineMost();
+
+  tv4->axis(0)->parallelize(ParallelType::BIDx);
+  tv4->axis(1)->parallelize(ParallelType::TIDx);
+
+  fusion.printMath();
+  fusion.print();
+  fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape, options);
+  auto t1 = at::randn(padded_shape, options);
+  std::vector<IValue> aten_inputs({t0, t1});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  auto t2 = t0 + 1;
+  auto t3 = at::pad(t2, {1, 1});
+  auto ref = t3 + t1;
 
   testValidate(&fusion, cg_outputs, aten_inputs, {ref}, __LINE__, __FILE__);
 }
