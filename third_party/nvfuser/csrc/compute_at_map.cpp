@@ -95,8 +95,8 @@ bool IterDomainGraph::exprsMap(
   }
 
   TORCH_INTERNAL_ASSERT(
-      first->isA<Merge>() || first->isA<Split>(),
-      "Merge and split are the only expressions supported through rfactor operations in compute at map, but found:\n",
+      first->isA<Merge>() || first->isA<Split>() || first->isA<Expand>(),
+      "Merge, split and Expand are the only expressions supported through rfactor operations in compute at map, but found:\n",
       first->toString());
 
   auto first_ids = ir_utils::filterByType<IterDomain>(
@@ -168,6 +168,15 @@ bool IterDomainGraph::exprsMap(
         first_split->innerSplit() != second_split->innerSplit() ||
         !first_split->startOffset()->sameAs(second_split->startOffset()) ||
         !first_split->stopOffset()->sameAs(second_split->stopOffset())) {
+      return false;
+    }
+  }
+
+  if (first->isA<Expand>()) {
+    auto first_expand = first->as<Expand>();
+    auto second_expand = second->as<Expand>();
+    if (!first_expand->left()->sameAs(second_expand->left()) ||
+        !first_expand->right()->sameAs(second_expand->right())) {
       return false;
     }
   }

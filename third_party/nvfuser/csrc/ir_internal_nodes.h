@@ -1471,7 +1471,8 @@ class TORCH_CUDA_CU_API IterDomain : public Val {
   static IterDomain* expand(
       IterDomain* in,
       Val* left_expansion,
-      Val* right_expansion);
+      Val* right_expansion,
+      bool mark_as_rfactor = false);
 
   bool isReduction() const {
     return getIterType() == IterType::Reduction;

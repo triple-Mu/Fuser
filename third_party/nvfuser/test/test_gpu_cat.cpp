@@ -3,6 +3,7 @@
 
 #include <executor_utils.h>
 #include <fusion.h>
+#include <inlining.h>
 #include <ops/all_ops.h>
 #include <test/test_gpu_validator.h>
 #include <test/test_utils.h>
@@ -314,9 +315,88 @@ TEST_F(NVFuserTest, FusionIterDomainExpand8_CUDA) {
   TORCH_CHECK(t0.equal(cg_outputs[0]));
 }
 
+TEST_F(NVFuserTest, FusionIterDomainExpand9_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  // auto tv0 = makeSymbolicTensor(1);
+  auto tv0 = makeConcreteTensor({11});
+  fusion.addInput(tv0);
+
+  auto tv1 = set(tv0);
+  auto tv2 = set(tv1);
+  auto tv3 = set(tv2);
+  fusion.addOutput(tv3);
+
+  // tv1->split(0, 3);
+  tv2->expand(0, IrBuilder::create<Int>(1), IrBuilder::create<Int>(2));
+
+  tv1->expand(0, IrBuilder::create<Int>(1), IrBuilder::create<Int>(2));
+
+  inlineMost();
+
+  fusion.printMath();
+  fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn({11}, options);
+
+  std::vector<IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  TORCH_CHECK(t0.equal(cg_outputs[0]));
+}
+
+TEST_F(NVFuserTest, FusionIterDomainExpand10_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  // auto tv0 = makeSymbolicTensor(1);
+  auto tv0 = makeConcreteTensor({11});
+  fusion.addInput(tv0);
+
+  auto tv1 = set(tv0);
+  auto tv2 = set(tv1);
+  auto tv3 = set(tv2);
+  fusion.addOutput(tv3);
+
+  // tv1->split(0, 3);
+  tv2->expand(0, IrBuilder::create<Int>(1), IrBuilder::create<Int>(2));
+  tv2->split(0, 3);
+  // tv1->expand(1, IrBuilder::create<Int>(3), IrBuilder::create<Int>(4));
+
+  tv1->expand(0, IrBuilder::create<Int>(1), IrBuilder::create<Int>(2));
+  tv1->split(0, 3);
+
+  tv1->inlineAt(1);
+
+  fusion.printMath();
+  fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn({11}, options);
+
+  std::vector<IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  TORCH_CHECK(t0.equal(cg_outputs[0]));
+}
+
 TEST_F(NVFuserTest, FusionPad1_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
+
+  std::vector<int64_t> shape({9});
 
   auto tv0 = makeSymbolicTensor(1);
   fusion.addInput(tv0);
@@ -325,26 +405,28 @@ TEST_F(NVFuserTest, FusionPad1_CUDA) {
   fusion.addOutput(tv1);
 
   fusion.printMath();
-
-  std::cerr << tv1->definition()->as<PadOp>()->getPaddedAxes() << std::endl;
-  PairwiseRootDomainMap map(tv0, tv1);
-  for (auto kv : map.mapProducerToConsumer(tv0->domain(), tv1->domain())) {
-    std::cerr << kv.first->toString() << ", " << kv.second->toString()
-              << std::endl;
-  }
-
-  GpuLower gpulw(&fusion);
-  kir::Kernel* kernel = gpulw.kernel();
-  for (auto expr : kernel->topLevelExprs()) {
-    std::cerr << "Kernel expr: " << expr->toString();
-  }
-
   fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape, options);
+  std::vector<IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  auto ref = at::pad(t0, {1, 1});
+
+  TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
 TEST_F(NVFuserTest, FusionPad2_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
+
+  std::vector<int64_t> shape({9});
 
   auto tv0 = makeSymbolicTensor(1);
   fusion.addInput(tv0);
@@ -355,14 +437,21 @@ TEST_F(NVFuserTest, FusionPad2_CUDA) {
   tv1->split(0, 4);
 
   fusion.printMath();
-
-  GpuLower gpulw(&fusion);
-  kir::Kernel* kernel = gpulw.kernel();
-  for (auto expr : kernel->topLevelExprs()) {
-    std::cerr << "Kernel expr: " << expr->toString();
-  }
-
   fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape, options);
+  std::vector<IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  auto ref = at::pad(t0, {1, 1});
+
+  TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
 TEST_F(NVFuserTest, FusionPad3_CUDA) {
@@ -397,7 +486,10 @@ TEST_F(NVFuserTest, FusionPad3_CUDA) {
   MaxRootDomainInfoSpanningTree(tv4).traverse(&propagator);
 #endif
 
+  inlineMost();
+
   fusion.printMath();
+  fusion.print();
   fusion.printKernel();
 
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);

@@ -456,7 +456,8 @@ TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
               .iter_type(IterType::Iteration)
               .build();
 #else
-      auto padded_id = IterDomain::expand(consumer_root, left_pad, right_pad);
+      auto padded_id =
+          IterDomain::expand(consumer_root, left_pad, right_pad, true);
 #endif
       std::cerr << "Padded domain: " << padded_id->toString() << std::endl;
       rfactor_ids.at(idx) = padded_id;

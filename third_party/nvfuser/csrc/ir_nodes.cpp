@@ -2160,7 +2160,8 @@ std::pair<IterDomain*, IterDomain*> IterDomain::swizzle(
 IterDomain* IterDomain::expand(
     IterDomain* in,
     Val* left_expansion,
-    Val* right_expansion) {
+    Val* right_expansion,
+    bool mark_as_rfactor) {
   TORCH_CHECK(
       left_expansion->isScalar(),
       "Expansion factor must be a scalar: ",
@@ -2191,6 +2192,7 @@ IterDomain* IterDomain::expand(
 
   auto expanded_id =
       IterDomainBuilder(in->container()->zeroVal(), expanded_id_size->as<Int>())
+          .is_rfactor_domain(mark_as_rfactor)
           .build();
 
   IrBuilder::create<Expand>(

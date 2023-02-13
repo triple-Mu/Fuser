@@ -578,9 +578,22 @@ void IndexCompute::handle(Expand* expand) {
 
   const auto out_ind = out_it->second;
 
-  index_map_[in_id] = sub(out_ind, expand->left());
-  extent_map_[in_id] =
-      sub(sub(getExtent(out_id), expand->left()), expand->right());
+  auto zero = GpuLower::current()->kernel()->zeroVal();
+
+  if (isZero(out_id)) {
+    index_map_[in_id] = zero;
+    extent_map_[in_id] = zero;
+    zero_domains_.emplace(in_id);
+    return;
+  } else if (hasZeroMerged(out_id)) {
+    zero_merged_in_.emplace(in_id);
+    index_map_[in_id] = out_ind;
+    extent_map_[in_id] = getExtent(out_id);
+  } else {
+    index_map_[in_id] = sub(out_ind, expand->left());
+    extent_map_[in_id] =
+        sub(sub(getExtent(out_id), expand->left()), expand->right());
+  }
 }
 
 void IndexCompute::handle(Expr* e) {
