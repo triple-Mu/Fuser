@@ -435,15 +435,19 @@ TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
 
   std::cerr << "num_padded_dims: " << num_padded_dims << std::endl;
 
-  std::vector<IterDomain*> out_domain;
+  std::vector<IterDomain*> root_ids(ndims);
+  std::vector<IterDomain*> rfactor_ids(ndims);
 
   int pad_idx = 0;
   for (const auto idx : c10::irange(ndims)) {
+    auto consumer_root = inp_dom[idx]->cloneWithoutRFactor();
+    root_ids.at(idx) = consumer_root;
     if (idx < num_non_padded_dims) {
-      out_domain.push_back(inp_dom[idx]->cloneWithoutRFactor());
+      rfactor_ids.at(idx) = consumer_root;
     } else {
       auto left_pad = pad_widths.at(pad_idx++);
       auto right_pad = pad_widths.at(pad_idx++);
+#if 0
       auto padded_extent =
           add(add(inp_dom[idx]->extent(), left_pad), right_pad);
       auto padded_id =
@@ -451,14 +455,20 @@ TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
               FusionGuard::getCurFusion()->zeroVal(), padded_extent)
               .iter_type(IterType::Iteration)
               .build();
+#else
+      auto padded_id = IterDomain::expand(consumer_root, left_pad, right_pad);
+#endif
       std::cerr << "Padded domain: " << padded_id->toString() << std::endl;
-      out_domain.push_back(padded_id);
+      rfactor_ids.at(idx) = padded_id;
     }
   }
 
   auto out = IrBuilder::create<TensorView>(
       IrBuilder::create<TensorDomain>(
-          out_domain, TensorDomain::getContiguousContiguity(out_domain)),
+          root_ids,
+          rfactor_ids,
+          rfactor_ids,
+          TensorDomain::getContiguousContiguity(rfactor_ids)),
       *inp->getDataType());
 
   IrBuilder::create<PadOp>(out, inp, pad_widths);

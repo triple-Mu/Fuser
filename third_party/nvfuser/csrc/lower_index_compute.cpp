@@ -792,8 +792,6 @@ IndexFromIdGraph getTensorIndexFromIdGraph(
   bool index_producer = producer_tv != nullptr;
   auto target_tv = index_producer ? producer_tv : consumer_tv;
 
-  std::cerr << "getTensorIndexFromIdGraph\n";
-
   auto loop_indexing =
       LoopIndexingAnalysis::fromLoopAndConsumer(loops, consumer_tv);
 
@@ -823,8 +821,6 @@ IndexFromIdGraph getTensorIndexFromIdGraph(
   // Run first backward traversal to generate
   //  loop nest based indexing math.
   indexing.run(loop_indexing);
-
-  std::cerr << "Initial indexing done\n";
 
   // Populate indexing through exact map from initial indexing
   auto consumer_root = index_producer ? consumer_tv->getRootDomain()
@@ -903,8 +899,6 @@ IndexFromIdGraph getTensorIndexFromIdGraph(
       mapped_dims.pushBack(consumer_id);
     }
   }
-
-  std::cerr << "Creating contig_finder\n";
 
   // No contig indexing was done in reference indexing
   ContigIDs contig_finder(

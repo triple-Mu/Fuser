@@ -168,6 +168,7 @@ std::unordered_map<IterDomain*, IterDomain*> PairwiseRootDomainMap::map(
       continue;
     }
 
+#if 0
     if (require_same_extent_ && consumer_tv_->definition()->isA<PadOp>()) {
       auto paded_axes =
           consumer_tv_->definition()->as<PadOp>()->getPaddedAxes();
@@ -178,6 +179,7 @@ std::unordered_map<IterDomain*, IterDomain*> PairwiseRootDomainMap::map(
         continue;
       }
     }
+#endif
 
     if (require_same_extent_ && concat_id != nullptr &&
         consumer_id == concat_id) {

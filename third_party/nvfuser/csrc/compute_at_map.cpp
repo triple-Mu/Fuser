@@ -565,8 +565,9 @@ void IterDomainGraph::build(Fusion* fusion) {
          consumer_tv->getMaybeRFactorDomain().end()});
     for (auto expr : exprs) {
       auto rfactor_inp_ids = ir_utils::filterByType<IterDomain>(expr->inputs());
+      // TODO: Check side effects
       TORCH_INTERNAL_ASSERT(
-          expr->isA<Split>() || expr->isA<Merge>(),
+          expr->isA<Split>() || expr->isA<Merge>() || expr->isA<Expand>(),
           "Wasn't expecting the expression type of:\n",
           expr->toString(),
           "\nto be an expression defined in an rfactor transformation.");

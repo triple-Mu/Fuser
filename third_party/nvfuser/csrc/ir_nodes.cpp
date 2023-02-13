@@ -3153,7 +3153,7 @@ std::string PadOp::toInlineString(int indent_size) const {
 }
 
 std::vector<int> PadOp::getPaddedAxes() const {
-  auto num_dims = out()->as<TensorView>()->nDims();
+  auto num_dims = out()->as<TensorView>()->getRootDomain().size();
   auto num_padded_axes = attributes_.size() / 2;
   std::vector<int> padded_axes(num_padded_axes);
   std::iota(padded_axes.begin(), padded_axes.end(), num_dims - num_padded_axes);

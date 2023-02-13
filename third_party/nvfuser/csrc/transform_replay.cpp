@@ -325,7 +325,7 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
     }
   }
 
-  expandProducerRootDomain(producer, consumer, forwarded_replay_map);
+  // expandProducerRootDomain(producer, consumer, forwarded_replay_map);
 
   // Replay producer dimensions.
   ReplayTransformations replay_PasC(

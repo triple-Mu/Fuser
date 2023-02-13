@@ -324,7 +324,6 @@ TEST_F(NVFuserTest, FusionPad1_CUDA) {
   auto tv1 = pad(tv0, {IrBuilder::create<Int>(1), IrBuilder::create<Int>(1)});
   fusion.addOutput(tv1);
 
-  std::cerr << "tv1: " << tv1->toString() << std::endl;
   fusion.printMath();
 
   std::cerr << tv1->definition()->as<PadOp>()->getPaddedAxes() << std::endl;
@@ -341,6 +340,88 @@ TEST_F(NVFuserTest, FusionPad1_CUDA) {
   }
 
   fusion.printKernel();
+}
+
+TEST_F(NVFuserTest, FusionPad2_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  auto tv0 = makeSymbolicTensor(1);
+  fusion.addInput(tv0);
+
+  auto tv1 = pad(tv0, {IrBuilder::create<Int>(1), IrBuilder::create<Int>(1)});
+  fusion.addOutput(tv1);
+
+  tv1->split(0, 4);
+
+  fusion.printMath();
+
+  GpuLower gpulw(&fusion);
+  kir::Kernel* kernel = gpulw.kernel();
+  for (auto expr : kernel->topLevelExprs()) {
+    std::cerr << "Kernel expr: " << expr->toString();
+  }
+
+  fusion.printKernel();
+}
+
+TEST_F(NVFuserTest, FusionPad3_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  std::vector<int64_t> shape({9, 11});
+  std::vector<int64_t> padded_shape({9, 11 + 2});
+
+  // auto tv0 = makeSymbolicTensor(2);
+  auto tv0 = makeConcreteTensor(shape);
+  fusion.addInput(tv0);
+  // auto tv1 = makeSymbolicTensor(2);
+  auto tv1 = makeConcreteTensor(padded_shape);
+  fusion.addInput(tv1);
+
+  auto tv2 = set(tv0);
+  auto tv3 = pad(tv2, {IrBuilder::create<Int>(1), IrBuilder::create<Int>(1)});
+  auto tv4 = add(tv3, tv1);
+  fusion.addOutput(tv4);
+
+  fusion.printMath();
+
+  std::cerr << "Padded axes: "
+            << tv3->definition()->as<PadOp>()->getPaddedAxes() << std::endl;
+
+#if 1
+  tv4->merge(0);
+  tv4->split(0, 32);
+
+  TransformPropagator propagator(tv4);
+  MaxRootDomainInfoSpanningTree(tv4).traverse(&propagator);
+#endif
+
+  fusion.printMath();
+  fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape, options);
+  auto t1 = at::randn(padded_shape, options);
+  std::vector<IValue> aten_inputs({t0, t1});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  auto t3 = at::pad(t0, {1, 1});
+  auto ref = t3 + t1;
+
+#if 0
+  std::cerr << "t0: " << t0 << std::endl;
+  std::cerr << "t1: " << t1 << std::endl;
+  std::cerr << "ref: " << ref << std::endl;
+  std::cerr << "cg: " << cg_outputs[0] << std::endl;
+#endif
+
+  testValidate(&fusion, cg_outputs, aten_inputs, {ref}, __LINE__, __FILE__);
 }
 
 TEST_F(NVFuserTest, FusionCat1_CUDA) {
