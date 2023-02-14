@@ -852,5 +852,113 @@ TEST_F(NVFuserTest, FusionCat5_CUDA) {
   TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
+TEST_F(NVFuserTest, FusionCat6_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  std::vector<int64_t> shape0({2, 4});
+  std::vector<int64_t> shape1({5, 4});
+  std::vector<int64_t> shape2({3, 4});
+
+  auto tv0 = makeConcreteTensor(shape0);
+  fusion.addInput(tv0);
+  auto tv1 = makeConcreteTensor(shape1);
+  fusion.addInput(tv1);
+  auto tv2 = makeConcreteTensor(shape2);
+  fusion.addInput(tv2);
+
+  auto tv3 = cat({tv0, tv1, tv2}, 0);
+  fusion.addOutput(tv3);
+
+  tv3->merge(0);
+  tv3->split(0, 4);
+  TransformPropagator propagator(tv3);
+  MaxRootDomainInfoSpanningTree(tv3).traverse(&propagator);
+
+  inlineMost();
+
+  tv3->axis(0)->parallelize(ParallelType::BIDx);
+  tv3->axis(1)->parallelize(ParallelType::TIDx);
+  scheduler_utils::parallelizeAllLike(tv3);
+
+  fusion.printMath();
+  fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape0, options);
+  auto t1 = at::randn(shape1, options);
+  auto t2 = at::randn(shape2, options);
+  std::vector<IValue> aten_inputs({t0, t1, t2});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  auto ref = at::cat({t0, t1, t2}, 0);
+
+  TORCH_CHECK(ref.equal(cg_outputs[0]));
+}
+
+TEST_F(NVFuserTest, FusionCat7_CUDA) {
+  int num_tensors_to_concat = 10;
+
+  for (int concat_dim : {0, 1}) {
+    Fusion fusion;
+    FusionGuard fg(&fusion);
+
+    std::vector<TensorView*> inputs;
+    for (const auto i : c10::irange(num_tensors_to_concat)) {
+      (void)i;
+      auto tv = makeSymbolicTensor(2);
+      fusion.addInput(tv);
+      inputs.push_back(tv);
+    }
+
+    auto concat_tv = cat(inputs, concat_dim);
+    fusion.addOutput(concat_tv);
+
+    fusion.printMath();
+
+    concat_tv->merge(0);
+    concat_tv->split(0, 128);
+
+    TransformPropagator propagator(concat_tv);
+    MaxRootDomainInfoSpanningTree(concat_tv).traverse(&propagator);
+
+    inlineMost();
+
+    concat_tv->axis(0)->parallelize(ParallelType::BIDx);
+    concat_tv->axis(1)->parallelize(ParallelType::TIDx);
+    scheduler_utils::parallelizeAllLike(concat_tv);
+
+    fusion.printMath();
+    fusion.printKernel();
+
+    auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+    at::manual_seed(0);
+
+    std::vector<int64_t> base_shape({11, 13});
+    std::vector<at::Tensor> aten_inputs;
+    for (const auto i : c10::irange(num_tensors_to_concat)) {
+      auto shape = base_shape;
+      shape[concat_dim] = 10 + (i % 5);
+      aten_inputs.emplace_back(at::randn(shape, options));
+    }
+
+    std::vector<IValue> aten_inputs_ivalue(
+        {aten_inputs.begin(), aten_inputs.end()});
+
+    FusionExecutor fe;
+    fe.compileFusion(&fusion, aten_inputs_ivalue);
+    auto cg_outputs = fe.runFusion(aten_inputs_ivalue);
+
+    auto ref = at::cat(aten_inputs, concat_dim);
+
+    TORCH_CHECK(ref.equal(cg_outputs[0]));
+  }
+}
+
 } // namespace jit
 } // namespace torch

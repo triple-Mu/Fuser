@@ -1359,10 +1359,13 @@ void IndexLowering::handle(const PadOp* pad) {
     auto producer_idx = indices.at(padded_axis);
     auto producer_root_id = producer_doms.at(padded_axis);
     pred = SimplifyingIrBuilder::andExpr(
-        // idx >= 0 && idx < extent
-        SimplifyingIrBuilder::geExpr(
-            producer_idx, GpuLower::current()->kernel()->zeroVal()),
-        SimplifyingIrBuilder::ltExpr(producer_idx, producer_root_id->extent()));
+        pred,
+        SimplifyingIrBuilder::andExpr(
+            // idx >= 0 && idx < extent
+            SimplifyingIrBuilder::geExpr(
+                producer_idx, GpuLower::current()->kernel()->zeroVal()),
+            SimplifyingIrBuilder::ltExpr(
+                producer_idx, producer_root_id->extent())));
   }
 
   pushBack(IrBuilder::create<TernaryOp>(
