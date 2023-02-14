@@ -184,6 +184,10 @@ void Expr::dispatch(T handler, Expr* expr) {
     ptr(handler)->handle(expr->as<PadOp>());
     return;
   }
+  if (expr->isStrictlyA<SliceOp>()) {
+    ptr(handler)->handle(expr->as<SliceOp>());
+    return;
+  }
   if (expr->isStrictlyA<Split>()) {
     ptr(handler)->handle(expr->as<Split>());
     return;
@@ -451,6 +455,10 @@ void Expr::constDispatch(T handler, const Expr* expr) {
   }
   if (expr->isStrictlyA<PadOp>()) {
     ptr(handler)->handle(expr->as<PadOp>());
+    return;
+  }
+  if (expr->isStrictlyA<SliceOp>()) {
+    ptr(handler)->handle(expr->as<SliceOp>());
     return;
   }
   if (expr->isStrictlyA<Split>()) {
@@ -844,6 +852,9 @@ void OptOutConstDispatch::handle(const CatOp* stmt) {
 void OptOutConstDispatch::handle(const PadOp* stmt) {
   unhandled(stmt);
 }
+void OptOutConstDispatch::handle(const SliceOp* stmt) {
+  unhandled(stmt);
+}
 
 void OptOutConstDispatch::handle(const Split* stmt) {
   unhandled(stmt);
@@ -1025,6 +1036,9 @@ void OptOutDispatch::handle(CatOp* stmt) {
   unhandled(stmt);
 }
 void OptOutDispatch::handle(PadOp* stmt) {
+  unhandled(stmt);
+}
+void OptOutDispatch::handle(SliceOp* stmt) {
   unhandled(stmt);
 }
 

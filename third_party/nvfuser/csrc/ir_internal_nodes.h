@@ -2261,6 +2261,41 @@ class TORCH_CUDA_CU_API PadOp : public Expr {
   std::pair<Val*, Val*> getPadWidths(int axis) const;
 };
 
+// Similar to at::indexing::Slice
+struct Slice {
+  Val* start = nullptr;
+  Val* stop = nullptr;
+  Val* step = nullptr;
+};
+
+class TORCH_CUDA_CU_API SliceOp : public Expr {
+ public:
+  using Expr::Expr;
+
+  SliceOp(
+      IrBuilderPasskey passkey,
+      TensorView* out,
+      TensorView* inp,
+      const std::vector<Slice>& ranges);
+
+  NVFUSER_DECLARE_CLONE_AND_CREATE
+
+  virtual const char* getOpString() const override {
+    return "SliceOp";
+  }
+
+  std::string toString(int indent_size = 0) const override;
+  std::string toInlineString(int indent_size = 0) const override;
+
+  Val* out() const {
+    return output(0);
+  }
+
+  Val* in() const {
+    return input(0);
+  }
+};
+
 class TORCH_CUDA_CU_API CatOp : public Expr {
  public:
   using Expr::Expr;

@@ -98,6 +98,7 @@ class ViewAsScalar;
 class ViewOp;
 class CatOp;
 class PadOp;
+class SliceOp;
 
 // Exprs
 class Split;
@@ -176,6 +177,7 @@ class TORCH_CUDA_CU_API OptOutConstDispatch : public PolymorphicBase {
   virtual void handle(const SqueezeOp* stmt);
   virtual void handle(const CatOp* stmt);
   virtual void handle(const PadOp* stmt);
+  virtual void handle(const SliceOp* stmt);
 
   virtual void handle(const Split* stmt);
   virtual void handle(const Merge* stmt);
@@ -252,6 +254,7 @@ class TORCH_CUDA_CU_API OptOutDispatch : public PolymorphicBase {
   virtual void handle(SqueezeOp* stmt);
   virtual void handle(CatOp* stmt);
   virtual void handle(PadOp* stmt);
+  virtual void handle(SliceOp* stmt);
 
   virtual void handle(Split* stmt);
   virtual void handle(Merge* stmt);

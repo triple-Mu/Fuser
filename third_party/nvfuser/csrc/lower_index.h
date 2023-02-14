@@ -58,6 +58,7 @@ class TORCH_CUDA_CU_API IndexLowering : private OptOutConstDispatch {
   void handle(const MmaOp*) final;
   void handle(const BroadcastOp*) final;
   void handle(const PadOp*) final;
+  void handle(const SliceOp*) final;
   void handle(const CatOp*) final;
 
   void handle(const kir::ForLoop*) final;

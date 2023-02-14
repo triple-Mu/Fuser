@@ -1373,6 +1373,14 @@ void IndexLowering::handle(const PadOp* pad) {
   GpuLower::current()->propagateExprInfo(pad, back());
 }
 
+void IndexLowering::handle(const SliceOp* slice) {
+  const auto in = lowerSrcIndex(slice->in(), slice->out());
+  const auto out = lowerDstIndex(slice->out());
+
+  pushBack(IrBuilder::create<UnaryOp>(UnaryOpType::Set, out, in));
+  GpuLower::current()->propagateExprInfo(slice, back());
+}
+
 void IndexLowering::handle(const CatOp* cat) {
   // It's possible to lower CatOp to a series of IfThenElse or Where,
   // but

@@ -960,5 +960,111 @@ TEST_F(NVFuserTest, FusionCat7_CUDA) {
   }
 }
 
+TEST_F(NVFuserTest, FusionSlice1_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  std::vector<int64_t> shape({9});
+
+  auto tv0 = makeSymbolicTensor(1);
+  fusion.addInput(tv0);
+
+  auto tv1 = slice(
+      tv0,
+      {{IrBuilder::create<Int>(1),
+        sub(tv0->axis(0)->extent(), IrBuilder::create<Int>(1))}});
+  fusion.addOutput(tv1);
+
+  fusion.printMath();
+
+  fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape, options);
+  std::vector<IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  auto ref = t0.index({at::indexing::Slice(1, shape[0] - 1)});
+
+  TORCH_CHECK(ref.equal(cg_outputs[0]));
+}
+
+TEST_F(NVFuserTest, FusionSlice2_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  std::vector<int64_t> shape({11, 30});
+
+  TORCH_CHECK(shape[1] % 2 == 0);
+
+  // auto tv0 = makeSymbolicTensor(2);
+  auto tv0 = makeConcreteTensor(shape);
+  fusion.addInput(tv0);
+
+  // This results in float
+  // auto mid_point = div(tv0->axis(1)->extent(), IrBuilder::create<Int>(2));
+  auto mid_point =
+      IrBuilder::divExpr(tv0->axis(1)->extent(), IrBuilder::create<Int>(2));
+
+  std::cerr << "Mid point: " << mid_point->toString()
+            << ", type: " << mid_point->getDataType().value() << std::endl;
+  auto tv1 = slice(tv0, {Slice(), {IrBuilder::create<Int>(0), mid_point}});
+  auto tv2 = slice(tv0, {Slice(), {mid_point}});
+  auto tv3 = add(tv1, tv2);
+  fusion.addOutput(tv3);
+
+  fusion.printMath();
+
+  fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape, options);
+  std::vector<IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  auto t1 = t0.index(
+      {at::indexing::Slice(0, at::indexing::None),
+       at::indexing::Slice(0, shape[1] / 2)});
+  auto t2 = t0.index(
+      {at::indexing::Slice(0, at::indexing::None),
+       at::indexing::Slice(shape[1] / 2)});
+  auto ref = t1 + t2;
+
+  TORCH_CHECK(ref.equal(cg_outputs[0]));
+}
+
+TEST_F(NVFuserTest, FusionSlice3_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  auto tv0 = makeSymbolicTensor(1);
+  fusion.addInput(tv0);
+
+  // These should result in unary set op
+  auto tv1 = slice(tv0, {{nullptr, tv0->axis(0)->extent()}});
+  auto tv2 = slice(tv0, {Slice()});
+  auto tv3 = add(tv1, tv2);
+  fusion.addOutput(tv3);
+
+  fusion.printMath();
+
+  TORCH_CHECK(
+      tv1->definition()->isA<UnaryOp>() &&
+      tv1->definition()->as<UnaryOp>()->getUnaryOpType() == UnaryOpType::Set);
+  TORCH_CHECK(
+      tv2->definition()->isA<UnaryOp>() &&
+      tv2->definition()->as<UnaryOp>()->getUnaryOpType() == UnaryOpType::Set);
+}
+
 } // namespace jit
 } // namespace torch

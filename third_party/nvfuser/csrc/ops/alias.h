@@ -77,6 +77,10 @@ TORCH_CUDA_CU_API TensorView* pad(
     TensorView* x,
     const std::vector<Val*>& pad_widths);
 
+TORCH_CUDA_CU_API TensorView* slice(
+    TensorView* inp,
+    const std::vector<Slice>& ranges);
+
 } // namespace cuda
 } // namespace fuser
 } // namespace jit

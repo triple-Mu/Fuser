@@ -3184,6 +3184,34 @@ std::pair<Val*, Val*> PadOp::getPadWidths(int axis) const {
       attribute(pad_idx)->as<Val>(), attribute(pad_idx + 1)->as<Val>());
 }
 
+SliceOp::SliceOp(
+    IrBuilderPasskey passkey,
+    TensorView* out,
+    TensorView* inp,
+    const std::vector<Slice>& ranges)
+    : Expr(passkey) {
+  addOutput(out);
+  addInput(inp);
+  for (const auto& range : ranges) {
+    addAttribute(range.start);
+    addAttribute(range.stop);
+    addAttribute(range.step);
+  }
+}
+
+NVFUSER_DEFINE_CLONE_AND_CREATE(SliceOp)
+
+std::string SliceOp::toString(int indent_size) const {
+  std::stringstream ss;
+  indent(ss, indent_size) << out()->toString() << "\n";
+  indent(ss, indent_size) << "   = slice( " << in()->toString() << " )\n";
+  return ss.str();
+}
+
+std::string SliceOp::toInlineString(int indent_size) const {
+  TORCH_CHECK(false, "Tensor op can not be printed inline");
+}
+
 CatOp::CatOp(
     IrBuilderPasskey passkey,
     Val* out,

@@ -472,6 +472,10 @@ class TORCH_CUDA_CU_API ComputeAtRootDomainMapBuilder
     mapPointwiseOrReductionOp(op);
   }
 
+  void handle(SliceOp* op) override {
+    mapPointwiseOrReductionOp(op);
+  }
+
   void handle(CatOp* op) override {
     // For compute-at, concat id should be mapped
     mapPointwiseOrReductionOp(op);

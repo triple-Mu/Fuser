@@ -2184,8 +2184,10 @@ TEST_F(NVFuserTest, FusionVectorizeInputToOutput_CUDA) {
   const int n = 12;
   auto t0 = at::randn({n}, options);
   // Shift by one to make it non-aligned
-  auto t0_misaligned = at::randn({n + 1}, options).index({Slice(1)});
-  auto t1_misaligned = at::empty({n + 1}, options).index({Slice(1)});
+  auto t0_misaligned =
+      at::randn({n + 1}, options).index({at::indexing::Slice(1)});
+  auto t1_misaligned =
+      at::empty({n + 1}, options).index({at::indexing::Slice(1)});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, {t0});

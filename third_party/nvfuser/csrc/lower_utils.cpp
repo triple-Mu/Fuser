@@ -143,6 +143,7 @@ bool isTvOp(const Expr* expr) {
           ViewAsScalar,
           ViewOp,
           PadOp,
+          SliceOp,
           CatOp,
           kir::GridReduction,
           kir::GroupedGridReduction,

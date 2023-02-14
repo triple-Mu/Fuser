@@ -707,6 +707,78 @@ TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
   return out;
 }
 
+TensorView* slice(TensorView* inp, const std::vector<Slice>& ranges) {
+  const auto inp_dom = TensorDomain::noReductions(inp->getMaybeRFactorDomain());
+  const int ndims = static_cast<int>(inp_dom.size());
+
+  TORCH_CHECK(ndims == static_cast<int>(ranges.size()));
+
+  auto normalize_slice_range = [](const Slice& range, Val* extent) -> Slice {
+    auto normalized_range = range;
+    if (range.start == nullptr) {
+      normalized_range.start = FusionGuard::getCurFusion()->zeroVal();
+    }
+    if (range.stop == nullptr) {
+      normalized_range.stop = extent;
+    }
+    if (range.step == nullptr) {
+      normalized_range.step = FusionGuard::getCurFusion()->oneVal();
+    }
+    return normalized_range;
+  };
+
+  for (auto& range : ranges) {
+    // Step not supported yet
+    TORCH_CHECK(
+        range.step == nullptr || range.step->isOneInt(),
+        "Unsupported step: ",
+        range.step->toString());
+  }
+
+  std::vector<IterDomain*> root_ids(ndims);
+  std::vector<IterDomain*> rfactor_ids(ndims);
+  std::vector<Slice> normalized_ranges(ndims);
+
+  bool needs_real_slicing = false;
+  for (const auto idx : c10::irange(ndims)) {
+    auto inp_root_id = inp_dom[idx]->cloneWithoutRFactor();
+    auto out_root_id = inp_root_id->cloneWithoutRFactor();
+    root_ids.at(idx) = out_root_id;
+    auto range = normalize_slice_range(ranges.at(idx), inp_root_id->extent());
+    normalized_ranges.push_back(range);
+    if (range.start->isZeroInt() && range.stop->sameAs(inp_root_id->extent()) &&
+        range.step->isOneInt()) {
+      // This dim doesn't need slicing
+      rfactor_ids.at(idx) = out_root_id;
+    } else {
+      auto sliced_id = IterDomain::expand(
+          out_root_id,
+          IrBuilder::negExpr(range.start),
+          sub(range.stop, inp_root_id->extent()),
+          true);
+      std::cerr << "Sliced domain: " << sliced_id->toString() << std::endl;
+      rfactor_ids.at(idx) = sliced_id;
+      needs_real_slicing = true;
+    }
+  }
+
+  // If slicing isn't actually needed, just return a copy
+  if (!needs_real_slicing) {
+    return set(inp);
+  }
+
+  auto out = IrBuilder::create<TensorView>(
+      IrBuilder::create<TensorDomain>(
+          root_ids,
+          rfactor_ids,
+          rfactor_ids,
+          TensorDomain::getContiguousContiguity(rfactor_ids)),
+      *inp->getDataType());
+
+  IrBuilder::create<SliceOp>(out, inp, normalized_ranges);
+  return out;
+}
+
 } // namespace cuda
 } // namespace fuser
 } // namespace jit
