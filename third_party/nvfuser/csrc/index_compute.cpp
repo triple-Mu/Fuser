@@ -2394,7 +2394,10 @@ std::vector<PredicateDomainInfo> getPredicateContigIds(
   // TODO: What's the reason of predicating the root domain rather
   // than the rfactor domain?
   // const auto& consumer_root_domain = consumer_tv->getRootDomain();
-  const auto& consumer_root_domain = consumer_tv->getMaybeRFactorDomain();
+  const auto& consumer_root_domain =
+      ir_utils::isReductionOp(consumer_tv->definition())
+      ? consumer_tv->getRootDomain()
+      : consumer_tv->getMaybeRFactorDomain();
 
   if (consumer_root_domain.empty()) {
     return std::vector<PredicateDomainInfo>();

@@ -1066,5 +1066,117 @@ TEST_F(NVFuserTest, FusionSlice3_CUDA) {
       tv2->definition()->as<UnaryOp>()->getUnaryOpType() == UnaryOpType::Set);
 }
 
+TEST_F(NVFuserTest, FusionSlice4_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  std::vector<int64_t> shape({5, 100});
+
+  // auto tv0 = makeSymbolicTensor(2);
+  auto tv0 = makeConcreteTensor(shape);
+  fusion.addInput(tv0);
+
+  // Consider a fusion of:
+  // auto tv1 = add(tv0, IrBuilder::create<Double>(1));
+  // auto tv2 = sum(tv1, {1});
+
+  // Reproduce the above fusion with split tensors
+
+  // Split the input to [0:2, :] and [2:, :]
+  auto tv1 = slice(
+      tv0, {{IrBuilder::create<Int>(0), IrBuilder::create<Int>(2)}, Slice()});
+  auto tv2 = slice(tv0, {{IrBuilder::create<Int>(2)}, Slice()});
+
+  auto tv3 = add(tv1, IrBuilder::create<Double>(1));
+  auto tv4 = add(tv2, IrBuilder::create<Double>(1));
+
+  auto tv5 = sum(tv3, {1});
+  auto tv6 = sum(tv4, {1});
+  auto tv7 = cat({tv5, tv6}, 0);
+  fusion.addOutput(tv7);
+
+  fusion.printMath();
+
+  // Schedule the two reductions separately
+  tv5->split(-1, 32);
+  auto tv5_rf = tv5->rFactor({-2});
+  tv5_rf->reorder({{-1, -2}});
+  auto tv5_cache = tv5->cacheBefore();
+  tv5->setMemoryType(MemoryType::Global);
+  SetSelector tv5_rf_selector({tv1, tv3, tv5, tv5_cache});
+  TransformPropagator tv5_rf_tp(tv5_rf);
+  MaxRootDomainInfoSpanningTree(tv5_rf, &tv5_rf_selector).traverse(&tv5_rf_tp);
+  inlineMost(std::vector<TensorView*>{tv1, tv3, tv5_rf});
+  tv5_rf->axis(0)->parallelize(ParallelType::BIDx);
+  tv5_rf->axis(1)->parallelize(ParallelType::TIDx);
+  scheduler_utils::parallelizeAllLike(tv5_rf, {tv1, tv3, tv5, tv5_cache});
+
+  tv6->split(-1, 32);
+  auto tv6_rf = tv6->rFactor({-2});
+  tv6_rf->reorder({{-1, -2}});
+  auto tv6_cache = tv6->cacheBefore();
+  tv6->setMemoryType(MemoryType::Global);
+  SetSelector tv6_rf_selector({tv2, tv4, tv6, tv6_cache});
+  TransformPropagator tv6_rf_tp(tv6_rf);
+  MaxRootDomainInfoSpanningTree(tv6_rf, &tv6_rf_selector).traverse(&tv6_rf_tp);
+  inlineMost(std::vector<TensorView*>{tv2, tv4, tv6_rf});
+  tv6_rf->axis(0)->parallelize(ParallelType::BIDx);
+  tv6_rf->axis(1)->parallelize(ParallelType::TIDx);
+  scheduler_utils::parallelizeAllLike(tv6_rf, {tv2, tv4, tv6, tv6_cache});
+
+  // cat consits of a PadOp and a CatOp. Fully inline the PadOp
+  for (auto tv7_inp :
+       ir_utils::filterByType<TensorView>(tv7->definition()->inputs())) {
+    tv7_inp->inlineAt(-1);
+  }
+
+  // Use just one block to concat the two results
+  // This doesn't work due to thread predicates (bug?)
+  // tv7->axis(0)->parallelize(ParallelType::TIDx);
+  tv7->axis(0)->parallelize(ParallelType::BIDx);
+
+  fusion.printMath();
+  fusion.printKernel();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape, options);
+  std::vector<IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  auto ref = (t0 + 1).to(at::kDouble).sum({1});
+
+  testValidate(&fusion, cg_outputs, aten_inputs, {ref}, __LINE__, __FILE__);
+}
+
+TEST_F(NVFuserTest, TMP1) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+
+  // These should result in unary set op
+  auto tv1 = sum(tv0, {1});
+  auto tv2 = set(tv1);
+  auto tv3 = sum(tv2, {0});
+  fusion.addOutput(tv3);
+
+  tv1->axis(0)->parallelize(ParallelType::TIDy);
+  tv1->axis(1)->parallelize(ParallelType::TIDx);
+
+  tv2->axis(0)->parallelize(ParallelType::TIDy);
+  tv2->setMemoryType(MemoryType::Shared);
+
+  tv3->axis(0)->parallelize(ParallelType::TIDx);
+
+  fusion.printMath();
+  fusion.printKernel();
+}
+
 } // namespace jit
 } // namespace torch
