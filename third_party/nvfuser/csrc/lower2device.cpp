@@ -306,8 +306,6 @@ void GpuLower::lower(Fusion* fusion) {
   thread_pred_map_.build(fusion_);
   dumpExprsIfEnabled(fusion_->exprs(), "build thread_pred_map_");
 
-  thread_pred_map_.print();
-
   // Fuse cetain patterns of reductions, such as a grid reduction
   // followed by a grid broadcast. Only depends on parallelization and
   // thread predicate map.

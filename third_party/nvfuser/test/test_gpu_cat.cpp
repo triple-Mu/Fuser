@@ -1153,30 +1153,5 @@ TEST_F(NVFuserTest, FusionSlice4_CUDA) {
   testValidate(&fusion, cg_outputs, aten_inputs, {ref}, __LINE__, __FILE__);
 }
 
-TEST_F(NVFuserTest, TMP1) {
-  Fusion fusion;
-  FusionGuard fg(&fusion);
-
-  auto tv0 = makeSymbolicTensor(2);
-  fusion.addInput(tv0);
-
-  // These should result in unary set op
-  auto tv1 = sum(tv0, {1});
-  auto tv2 = set(tv1);
-  auto tv3 = sum(tv2, {0});
-  fusion.addOutput(tv3);
-
-  tv1->axis(0)->parallelize(ParallelType::TIDy);
-  tv1->axis(1)->parallelize(ParallelType::TIDx);
-
-  tv2->axis(0)->parallelize(ParallelType::TIDy);
-  tv2->setMemoryType(MemoryType::Shared);
-
-  tv3->axis(0)->parallelize(ParallelType::TIDx);
-
-  fusion.printMath();
-  fusion.printKernel();
-}
-
 } // namespace jit
 } // namespace torch
