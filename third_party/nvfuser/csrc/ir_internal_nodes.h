@@ -1468,7 +1468,7 @@ class TORCH_CUDA_CU_API IterDomain : public Val {
       bool inner_split,
       bool trim_out_of_bounds);
 
-  static IterDomain* expand(
+  static IterDomain* resize(
       IterDomain* in,
       Val* left_expansion,
       Val* right_expansion,
@@ -2136,11 +2136,11 @@ class TORCH_CUDA_CU_API Swizzle2D : public Expr {
   }
 };
 
-class TORCH_CUDA_CU_API Expand : public Expr {
+class TORCH_CUDA_CU_API Resize : public Expr {
  public:
   using Expr::Expr;
 
-  Expand(
+  Resize(
       IrBuilderPasskey,
       IterDomain* out,
       IterDomain* in,
@@ -2150,7 +2150,7 @@ class TORCH_CUDA_CU_API Expand : public Expr {
   NVFUSER_DECLARE_CLONE_AND_CREATE
 
   virtual const char* getOpString() const override {
-    return "Expand";
+    return "Resize";
   }
 
   std::string toString(int indent_size = 0) const override;

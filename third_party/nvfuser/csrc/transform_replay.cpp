@@ -259,7 +259,7 @@ void expandProducerRootDomain(
       auto consumer_root_id = consumer_root_dom.at(padded_axis);
       auto producer_root_id = c2p.at(consumer_root_id);
       const auto pad_widths = pad->getPadWidths(padded_axis);
-      auto producer_expanded_id = IterDomain::expand(
+      auto producer_expanded_id = IterDomain::resize(
           producer_root_id, pad_widths.first, pad_widths.second);
       std::cerr << "Map consumer id to producuer expanded id: "
                 << consumer_root_id->toString() << ", "

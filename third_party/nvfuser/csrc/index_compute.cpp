@@ -566,7 +566,7 @@ void IndexCompute::handle(Swizzle2D* swizzle_2d) {
   }
 }
 
-void IndexCompute::handle(Expand* expand) {
+void IndexCompute::handle(Resize* expand) {
   auto out_id = maybeGetExactMapConcreteID(expand->out());
   auto in_id = maybeGetExactMapConcreteID(expand->in());
 
@@ -597,7 +597,7 @@ void IndexCompute::handle(Expand* expand) {
 }
 
 void IndexCompute::handle(Expr* e) {
-  auto is_expected_type = e->isOneOf<Split, Merge, Swizzle2D, Expand>();
+  auto is_expected_type = e->isOneOf<Split, Merge, Swizzle2D, Resize>();
   TORCH_INTERNAL_ASSERT(
       is_expected_type, "Invalid expr type found in transform traversal.");
   BackwardVisitor::handle(e);
@@ -2506,7 +2506,7 @@ std::vector<PredicateDomainInfo> getExpandedDomainsToPredicate(
       {consumer_tv->domain()->domain().begin(),
        consumer_tv->domain()->domain().end()});
 
-  for (auto expand : ir_utils::filterByType<Expand>(exprs)) {
+  for (auto expand : ir_utils::filterByType<Resize>(exprs)) {
     // If the input is a root domain, it is already predicated by the
     // normal predicate logic
     if (std::find(

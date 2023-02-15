@@ -74,7 +74,7 @@ class TORCH_CUDA_CU_API ReplayTransformations : public IterVisitor {
   //  if replaying swizzle is enabled.
   void handle(Swizzle2D* m) override;
 
-  void handle(Expand* exp) override;
+  void handle(Resize* exp) override;
 
  public:
   ReplayTransformations(

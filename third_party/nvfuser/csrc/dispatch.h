@@ -104,7 +104,7 @@ class SliceOp;
 class Split;
 class Merge;
 class Swizzle2D;
-class Expand;
+class Resize;
 
 namespace kir {
 class Predicate;
@@ -182,7 +182,7 @@ class TORCH_CUDA_CU_API OptOutConstDispatch : public PolymorphicBase {
   virtual void handle(const Split* stmt);
   virtual void handle(const Merge* stmt);
   virtual void handle(const Swizzle2D* stmt);
-  virtual void handle(const Expand* stmt);
+  virtual void handle(const Resize* stmt);
   virtual void handle(const TransposeOp* stmt);
   virtual void handle(const ExpandOp* stmt);
   virtual void handle(const ShiftOp* stmt);
@@ -259,7 +259,7 @@ class TORCH_CUDA_CU_API OptOutDispatch : public PolymorphicBase {
   virtual void handle(Split* stmt);
   virtual void handle(Merge* stmt);
   virtual void handle(Swizzle2D* stmt);
-  virtual void handle(Expand* stmt);
+  virtual void handle(Resize* stmt);
   virtual void handle(TransposeOp* stmt);
   virtual void handle(ExpandOp* stmt);
   virtual void handle(ShiftOp* stmt);

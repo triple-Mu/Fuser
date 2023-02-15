@@ -551,7 +551,7 @@ class PredicateChcker : public IterVisitor {
           {output->domain()->domain().begin(),
            output->domain()->domain().end()});
       if (std::any_of(exprs.begin(), exprs.end(), [](Expr* expr) {
-            return expr->isA<Expand>();
+            return expr->isA<Resize>();
           })) {
         return true;
       }

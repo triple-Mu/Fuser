@@ -58,7 +58,7 @@ class OrderedIdInformation : public OptInDispatch {
 
   void handle(Swizzle2D* swizzle) override;
 
-  void handle(Expand* expand) override;
+  void handle(Resize* expand) override;
 
   // Track which root ids were used to generate each iter domain
   std::unordered_map<IterDomain*, VectorOfUniqueEntries<IterDomain*>>
@@ -255,7 +255,7 @@ class ContigIDs : public OptInDispatch {
 
   // Disable contig indexing as indexing with an expanded ID need to
   // get back to its input ID
-  void handle(Expand* expand) override {}
+  void handle(Resize* expand) override {}
 
   IterDomain* getCAIndexConcreteId(IterDomain* id) const;
 

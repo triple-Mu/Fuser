@@ -2157,7 +2157,7 @@ std::pair<IterDomain*, IterDomain*> IterDomain::swizzle(
   return std::make_pair(out_x, out_y);
 }
 
-IterDomain* IterDomain::expand(
+IterDomain* IterDomain::resize(
     IterDomain* in,
     Val* left_expansion,
     Val* right_expansion,
@@ -2195,7 +2195,7 @@ IterDomain* IterDomain::expand(
           .is_rfactor_domain(mark_as_rfactor)
           .build();
 
-  IrBuilder::create<Expand>(
+  IrBuilder::create<Resize>(
       in->container(), expanded_id, in, left_expansion, right_expansion);
 
   return expanded_id;
@@ -2739,7 +2739,7 @@ void TensorDomain::expand(int dim, Val* left_expansion, Val* right_expansion) {
       !id->isMmaSwizzled(),
       "Further transformation on warp mapped id's not allowed.");
 
-  auto expanded_id = IterDomain::expand(id, left_expansion, right_expansion);
+  auto expanded_id = IterDomain::resize(id, left_expansion, right_expansion);
   domain_.at(dim) = expanded_id;
   resetDomains();
 }
@@ -3017,7 +3017,7 @@ std::string Swizzle2D::toInlineString(int indent_size) const {
 
 NVFUSER_DEFINE_CLONE_AND_CREATE(Swizzle2D)
 
-Expand::Expand(
+Resize::Resize(
     IrBuilderPasskey passkey,
     IterDomain* out,
     IterDomain* in,
@@ -3030,7 +3030,7 @@ Expand::Expand(
   addAttribute(right);
 }
 
-std::string Expand::toString(int indent_size) const {
+std::string Resize::toString(int indent_size) const {
   std::stringstream ss;
   ss << "Expand: ";
   ss << in()->toString();
@@ -3041,11 +3041,11 @@ std::string Expand::toString(int indent_size) const {
   return ss.str();
 }
 
-std::string Expand::toInlineString(int indent_size) const {
+std::string Resize::toInlineString(int indent_size) const {
   TORCH_CHECK(false, "Expand can not be printed inline");
 }
 
-NVFUSER_DEFINE_CLONE_AND_CREATE(Expand)
+NVFUSER_DEFINE_CLONE_AND_CREATE(Resize)
 
 NamedScalar::NamedScalar(
     IrBuilderPasskey passkey,

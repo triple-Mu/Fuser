@@ -327,7 +327,7 @@ void OrderedIdInformation::handle(Swizzle2D* swizzle) {
   }
 }
 
-void OrderedIdInformation::handle(Expand* expand) {
+void OrderedIdInformation::handle(Resize* expand) {
   // Find inputs in the active_ids_ vector
   const auto in_it =
       std::find(active_ids_.begin(), active_ids_.end(), expand->in());
@@ -533,7 +533,7 @@ void ContigIDs::build(const std::vector<IterDomain*>& ids) {
         {root_domain_.begin(), root_domain_.end()},
         {ids.begin(), ids.end()});
     for (auto expr : exprs) {
-      if (auto expand = dynamic_cast<Expand*>(expr)) {
+      if (auto expand = dynamic_cast<Resize*>(expr)) {
         expand_deps_.insert(expand->out());
       } else {
         if (std::any_of(

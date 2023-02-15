@@ -627,7 +627,7 @@ TensorView* cat(const std::vector<TensorView*>& inputs, int cat_dim) {
         // broadcast, partial, etc?
         right_pad = sub(right_pad, inp_id->extent());
         auto expanded_id =
-            IterDomain::expand(root_id, left_pad, right_pad, true);
+            IterDomain::resize(root_id, left_pad, right_pad, true);
         std::cerr << "Expanded domain: " << expanded_id->toString()
                   << std::endl;
         rfactor_ids.at(dim) = expanded_id;
@@ -688,7 +688,7 @@ TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
       auto left_pad = pad_widths.at(pad_idx++);
       auto right_pad = pad_widths.at(pad_idx++);
       auto padded_id =
-          IterDomain::expand(consumer_root, left_pad, right_pad, true);
+          IterDomain::resize(consumer_root, left_pad, right_pad, true);
       std::cerr << "Padded domain: " << padded_id->toString() << std::endl;
       rfactor_ids.at(idx) = padded_id;
     }
@@ -751,7 +751,7 @@ TensorView* slice(TensorView* inp, const std::vector<Slice>& ranges) {
       // This dim doesn't need slicing
       rfactor_ids.at(idx) = out_root_id;
     } else {
-      auto sliced_id = IterDomain::expand(
+      auto sliced_id = IterDomain::resize(
           out_root_id,
           IrBuilder::negExpr(range.start),
           sub(range.stop, inp_root_id->extent()),

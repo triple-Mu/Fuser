@@ -95,7 +95,7 @@ bool IterDomainGraph::exprsMap(
   }
 
   TORCH_INTERNAL_ASSERT(
-      first->isA<Merge>() || first->isA<Split>() || first->isA<Expand>(),
+      first->isA<Merge>() || first->isA<Split>() || first->isA<Resize>(),
       "Merge, split and Expand are the only expressions supported through rfactor operations in compute at map, but found:\n",
       first->toString());
 
@@ -172,9 +172,9 @@ bool IterDomainGraph::exprsMap(
     }
   }
 
-  if (first->isA<Expand>()) {
-    auto first_expand = first->as<Expand>();
-    auto second_expand = second->as<Expand>();
+  if (first->isA<Resize>()) {
+    auto first_expand = first->as<Resize>();
+    auto second_expand = second->as<Resize>();
     if (!first_expand->left()->sameAs(second_expand->left()) ||
         !first_expand->right()->sameAs(second_expand->right())) {
       return false;
@@ -576,7 +576,7 @@ void IterDomainGraph::build(Fusion* fusion) {
       auto rfactor_inp_ids = ir_utils::filterByType<IterDomain>(expr->inputs());
       // TODO: Check side effects
       TORCH_INTERNAL_ASSERT(
-          expr->isA<Split>() || expr->isA<Merge>() || expr->isA<Expand>(),
+          expr->isA<Split>() || expr->isA<Merge>() || expr->isA<Resize>(),
           "Wasn't expecting the expression type of:\n",
           expr->toString(),
           "\nto be an expression defined in an rfactor transformation.");
