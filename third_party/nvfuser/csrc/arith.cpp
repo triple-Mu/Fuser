@@ -130,8 +130,9 @@ Val* newScalar(ValType vtype, DataType dtype) {
         case DataType::Int:
           return IrBuilder::create<Int>(DataType::Int);
         case DataType::ComplexFloat:
+          return IrBuilder::create<ComplexDouble>(DataType::ComplexFloat);
         case DataType::ComplexDouble:
-          return IrBuilder::create<ComplexDouble>();
+          return IrBuilder::create<ComplexDouble>(DataType::ComplexDouble);
         default:
           break;
       }
@@ -934,6 +935,7 @@ NVFUSER_DEFINE_UNARY_OP(ceil, Ceil)
 NVFUSER_DEFINE_UNARY_OP(floor, Floor)
 NVFUSER_DEFINE_UNARY_OP(frac, Frac)
 NVFUSER_DEFINE_UNARY_OP(neg, Neg)
+NVFUSER_DEFINE_UNARY_OP(notOp, Not)
 NVFUSER_DEFINE_UNARY_OP(relu, Relu)
 NVFUSER_DEFINE_UNARY_OP(round, Round)
 NVFUSER_DEFINE_UNARY_OP(silu, Silu)

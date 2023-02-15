@@ -844,6 +844,54 @@ class TestNvFuserFrontend(TestCase):
                 torch_result = torch.where(pred, a, b)
                 self.assertEqual(nv_result, torch_result)
 
+    def test_iota(self):
+        inputs = [
+            (2, 0, 2, DataType.Int),
+            (3, 100, 1, DataType.Int32),
+            # TODO: How do I that that? I am getting the following error:
+            # NameError: name 'None0' is not defined
+            # (4, None, None, DataType.Int),
+        ]
+
+        def fusion_func(fd: FusionDefinition):
+            for input in inputs:
+                c0 = fd.define_constant(input[0])
+                c1 = None if input[1] is None else fd.define_constant(input[1])
+                c2 = None if input[2] is None else fd.define_constant(input[2])
+                dt = input[3]
+                t3 = fd.ops.iota(c0, c1, c2, dt)
+                fd.add_output(t3)
+
+        nvf_out, _ = self.exec_nvfuser(fusion_func, [])
+
+        eager_out1 = torch.tensor([0, 2], dtype=torch.long, device="cuda")
+        eager_out2 = torch.tensor([100, 101, 102], dtype=torch.int, device="cuda")
+        eager_out3 = torch.tensor([0, 1, 2, 3], dtype=torch.long, device="cuda")
+        self.assertEqual(eager_out1, nvf_out[0])
+        self.assertEqual(eager_out2, nvf_out[1])
+        # self.assertEqual(eager_out3, nvf_out[2])
+
+    def test_complex_rsqrt(self):
+        inputs = [
+            torch.randn(4, device="cuda", dtype=torch.complex64),
+            torch.randn(4, device="cuda", dtype=torch.complex128),
+        ]
+
+        def fusion_func(fd: FusionDefinition):
+            t0 = fd.from_pytorch(inputs[0])
+            t1 = fd.from_pytorch(inputs[1])
+            t2 = fd.ops.rsqrt(t0)
+            fd.add_output(t2)
+            t3 = fd.ops.rsqrt(t1)
+            fd.add_output(t3)
+
+        (rfloat, rdouble), _ = self.exec_nvfuser(fusion_func, inputs)
+
+        at_rfloat = inputs[0].rsqrt()
+        at_rdouble = inputs[1].rsqrt()
+
+        self.assertEqual(at_rfloat, rfloat)
+        self.assertEqual(at_rdouble, rdouble)
 
 if __name__ == '__main__':
     run_tests()
