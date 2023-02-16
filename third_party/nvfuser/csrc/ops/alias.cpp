@@ -372,8 +372,53 @@ TensorView* transpose(TensorView* x) {
   return transpose(x, 0, 1);
 }
 
+TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
+  const auto& inp_dom = inp->domain()->noReductions();
+
+  const auto ndims = inp->domain()->noReductions().size();
+
+  TORCH_CHECK(
+      pad_widths.size() % 2 == 0 && pad_widths.size() / 2 <= ndims,
+      "Invalid number of padding widths: ",
+      pad_widths.size());
+
+  const auto num_padded_dims = pad_widths.size() / 2;
+  const auto num_non_padded_dims = ndims - num_padded_dims;
+
+  std::vector<IterDomain*> root_ids(ndims);
+  std::vector<IterDomain*> rfactor_ids(ndims);
+
+  int pad_idx = 0;
+  for (const auto idx : c10::irange(ndims)) {
+    auto consumer_root = inp_dom[idx]->cloneWithoutRFactor();
+    root_ids.at(idx) = consumer_root;
+    if (idx < num_non_padded_dims) {
+      rfactor_ids.at(idx) = consumer_root;
+    } else {
+      // Expand the root domain and mark it as a rfactor domain
+      auto left_pad = pad_widths.at(pad_idx++);
+      auto right_pad = pad_widths.at(pad_idx++);
+      auto padded_id =
+          IterDomain::resize(consumer_root, left_pad, right_pad, true);
+      rfactor_ids.at(idx) = padded_id;
+    }
+  }
+
+  auto out = IrBuilder::create<TensorView>(
+      IrBuilder::create<TensorDomain>(
+          root_ids,
+          rfactor_ids,
+          rfactor_ids,
+          TensorDomain::getContiguousContiguity(rfactor_ids)),
+      *inp->getDataType());
+
+  IrBuilder::create<PadOp>(out, inp, pad_widths);
+
+  return out;
+}
+
 TensorView* cat(const std::vector<TensorView*>& inputs, int cat_dim) {
-  TORCH_CHECK(!inputs.empty(), "No input given");
+  TORCH_CHECK(!inputs.empty(), "No input tensor given");
 
   const auto dtype = inputs.at(0)->getDataType().value();
 
@@ -412,12 +457,15 @@ TensorView* cat(const std::vector<TensorView*>& inputs, int cat_dim) {
   Val* concat_ext = nullptr;
 
   for (const auto i : c10::irange(inputs.size())) {
-    // TODO: expanded extent?
-    concat_ext = SimplifyingIrBuilder::addExpr(
-        concat_ext, inp_doms.at(i).at(cat_dim)->extent());
+    auto input_dim_extent =
+        inp_doms.at(i).at(cat_dim)->getMaybeExpandedExtent();
+    concat_ext = SimplifyingIrBuilder::addExpr(concat_ext, input_dim_extent);
   }
 
-  // Create a new rfactor tensor by padding the concat dim.
+  // For each of the input tensors, create a new rfactor tensor by
+  // padding the concat dim. Padding is used here as it effectively
+  // embeds the resizing information of the concat operation.
+
   Val* left_pad = FusionGuard::getCurFusion()->zeroVal();
   Val* right_pad = concat_ext;
   std::vector<Val*> expanded_inputs(inputs.size());
@@ -435,21 +483,32 @@ TensorView* cat(const std::vector<TensorView*>& inputs, int cat_dim) {
         pad_widths.at(dim * 2) = FusionGuard::getCurFusion()->zeroVal();
         pad_widths.at(dim * 2 + 1) = FusionGuard::getCurFusion()->zeroVal();
       } else {
+        // Resize the root ID so that it has the same extent as the
+        // concatenated ID. The expansion of both left and right sides
+        // is done so that this input tensor is positioned in a way
+        // that corresponds to the concatenated dimension. For
+        // example, the first input should be at the
+        // left-most position, so it is expaned only at the right side
+        // with the expansion factor of
+        // (total_concatenated_domain_extent -
+        // extent_of_the_input_tensor). Similarly, the second tensor
+        // is expanded by extent_of_the_input_tensor at its left side,
+        // and by (total_concatenated_domain_extent -
+        // extent_of_the_input_tensor - extent_of_the_second_tensor).
+        //
         // TODO: what to do if inp_id is not a normal iterdomain, i.e.,
         // broadcast, partial, etc?
-        right_pad = sub(right_pad, inp_id->extent());
-        auto expanded_id =
+        right_pad = sub(right_pad, inp_id->getMaybeExpandedExtent());
+        auto resized_id =
             IterDomain::resize(root_id, left_pad, right_pad, true);
-        std::cerr << "Expanded domain: " << expanded_id->toString()
-                  << std::endl;
-        rfactor_ids.at(dim) = expanded_id;
+        rfactor_ids.at(dim) = resized_id;
         pad_widths.at(dim * 2) = left_pad;
         pad_widths.at(dim * 2 + 1) = right_pad;
         left_pad = add(left_pad, inp_id->extent());
       }
     }
 
-    auto expanded_inp = IrBuilder::create<TensorView>(
+    auto resized_inp = IrBuilder::create<TensorView>(
         IrBuilder::create<TensorDomain>(
             root_ids,
             rfactor_ids,
@@ -457,64 +516,15 @@ TensorView* cat(const std::vector<TensorView*>& inputs, int cat_dim) {
             TensorDomain::getContiguousContiguity(rfactor_ids)),
         dtype);
 
-    IrBuilder::create<PadOp>(expanded_inp, inputs.at(input_idx), pad_widths);
+    IrBuilder::create<PadOp>(resized_inp, inputs.at(input_idx), pad_widths);
 
-    expanded_inputs.at(input_idx) = expanded_inp;
+    expanded_inputs.at(input_idx) = resized_inp;
   }
 
-  // At this point, left_pad should be equal to concat_ext, and
-  // right_pad should be zero
-
+  // Now all of expanded_inputs have the same shape as the out tensor
   auto out = ops::newOutputTV(expanded_inputs, dtype);
 
   IrBuilder::create<CatOp>(out, expanded_inputs, cat_dim);
-
-  return out;
-}
-
-TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
-  const auto& inp_dom = inp->domain()->noReductions();
-
-  const auto ndims = inp->domain()->noReductions().size();
-
-  TORCH_CHECK(
-      pad_widths.size() % 2 == 0 && pad_widths.size() / 2 <= ndims,
-      "Invalid number of padding widths: ",
-      pad_widths.size());
-
-  const auto num_padded_dims = pad_widths.size() / 2;
-  const auto num_non_padded_dims = ndims - num_padded_dims;
-
-  std::cerr << "num_padded_dims: " << num_padded_dims << std::endl;
-
-  std::vector<IterDomain*> root_ids(ndims);
-  std::vector<IterDomain*> rfactor_ids(ndims);
-
-  int pad_idx = 0;
-  for (const auto idx : c10::irange(ndims)) {
-    auto consumer_root = inp_dom[idx]->cloneWithoutRFactor();
-    root_ids.at(idx) = consumer_root;
-    if (idx < num_non_padded_dims) {
-      rfactor_ids.at(idx) = consumer_root;
-    } else {
-      auto left_pad = pad_widths.at(pad_idx++);
-      auto right_pad = pad_widths.at(pad_idx++);
-      auto padded_id =
-          IterDomain::resize(consumer_root, left_pad, right_pad, true);
-      std::cerr << "Padded domain: " << padded_id->toString() << std::endl;
-      rfactor_ids.at(idx) = padded_id;
-    }
-  }
-
-  auto out = IrBuilder::create<TensorView>(
-      IrBuilder::create<TensorDomain>(
-          root_ids,
-          rfactor_ids,
-          rfactor_ids,
-          TensorDomain::getContiguousContiguity(rfactor_ids)),
-      *inp->getDataType());
-
-  IrBuilder::create<PadOp>(out, inp, pad_widths);
 
   return out;
 }
@@ -568,7 +578,6 @@ TensorView* slice(TensorView* inp, const std::vector<Slice>& ranges) {
           IrBuilder::negExpr(range.start),
           sub(range.stop, inp_root_id->extent()),
           true);
-      std::cerr << "Sliced domain: " << sliced_id->toString() << std::endl;
       rfactor_ids.at(idx) = sliced_id;
       needs_real_slicing = true;
     }

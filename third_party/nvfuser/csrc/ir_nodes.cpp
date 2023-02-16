@@ -3090,7 +3090,9 @@ NVFUSER_DEFINE_CLONE_AND_CREATE(PadOp)
 std::string PadOp::toString(int indent_size) const {
   std::stringstream ss;
   indent(ss, indent_size) << out()->toString() << "\n";
-  indent(ss, indent_size) << "   = pad( " << in()->toString() << " )\n";
+  indent(ss, indent_size) << "   = pad( " << in()->toString() << ", {"
+                          << toDelimitedString(getPadWidths()) << "}"
+                          << " )\n";
   return ss.str();
 }
 
@@ -3104,6 +3106,16 @@ std::vector<int> PadOp::getPaddedAxes() const {
   std::vector<int> padded_axes(num_padded_axes);
   std::iota(padded_axes.begin(), padded_axes.end(), num_dims - num_padded_axes);
   return padded_axes;
+}
+
+std::vector<Val*> PadOp::getPadWidths() const {
+  std::vector<Val*> pad_widths;
+  std::transform(
+      attributes_.begin(),
+      attributes_.end(),
+      std::back_inserter(pad_widths),
+      [](Statement* attr) { return attr->as<Val>(); });
+  return pad_widths;
 }
 
 std::pair<Val*, Val*> PadOp::getPadWidths(int axis) const {
@@ -3137,6 +3149,9 @@ SliceOp::SliceOp(
   addOutput(out);
   addInput(inp);
   for (const auto& range : ranges) {
+    TORCH_INTERNAL_ASSERT(range.start != nullptr);
+    TORCH_INTERNAL_ASSERT(range.stop != nullptr);
+    TORCH_INTERNAL_ASSERT(range.step != nullptr);
     addAttribute(range.start);
     addAttribute(range.stop);
     addAttribute(range.step);
@@ -3148,7 +3163,16 @@ NVFUSER_DEFINE_CLONE_AND_CREATE(SliceOp)
 std::string SliceOp::toString(int indent_size) const {
   std::stringstream ss;
   indent(ss, indent_size) << out()->toString() << "\n";
-  indent(ss, indent_size) << "   = slice( " << in()->toString() << " )\n";
+  indent(ss, indent_size) << "   = slice( " << in()->toString() << ", {";
+  for (const auto& slice : getRanges()) {
+    ss << " {"
+       << toDelimitedString(std::vector<std::string>{
+              slice.start->toString(),
+              slice.stop->toString(),
+              slice.step->toString()})
+       << "}";
+  }
+  ss << " } )\n";
   return ss.str();
 }
 
@@ -3166,6 +3190,13 @@ CatOp::CatOp(
   for (auto inp : inputs) {
     addInput(inp);
   }
+  TORCH_INTERNAL_ASSERT(
+      concatenated_dim >= 0 &&
+          concatenated_dim <
+              static_cast<int>(ir_utils::getTv(out)->getRootDomain().size()),
+      "Invalid dimension to concatenate: ",
+      concatenated_dim);
+
   addAttribute(IrBuilder::create<Attribute<int>>(
       passkey.ir_container_, concatenated_dim));
 }
@@ -3178,6 +3209,10 @@ CatOp::CatOp(
     Val* concatenated_domain_index,
     const std::vector<Bool*>& preds)
     : Expr(passkey) {
+  TORCH_INTERNAL_ASSERT(
+      passkey.ir_container_->isA<kir::Kernel>(),
+      "Should only be used for Kernel container.");
+
   addOutput(out);
   for (auto inp : inputs) {
     addInput(inp);
@@ -3196,7 +3231,8 @@ std::string CatOp::toString(int indent_size) const {
   std::stringstream ss;
   indent(ss, indent_size) << output(0)->toString() << "\n";
   indent(ss, indent_size) << "   = cat( ";
-  toDelimitedString(inputs());
+  ss << toDelimitedString(inputs());
+  ss << ", " << concatenatedDim();
   ss << " )\n";
   return ss.str();
 }
@@ -3206,6 +3242,9 @@ std::string CatOp::toInlineString(int indent_size) const {
 }
 
 Val* CatOp::getConcatenatedDomainIndex() const {
+  TORCH_INTERNAL_ASSERT(
+      container()->isA<kir::Kernel>(),
+      "Should only be used for Kernel container.");
   TORCH_INTERNAL_ASSERT(attributes().size() > 0);
   TORCH_INTERNAL_ASSERT(attribute(1) != nullptr);
   auto idx = attribute(1)->as<Val>();
@@ -3213,6 +3252,9 @@ Val* CatOp::getConcatenatedDomainIndex() const {
 }
 
 Bool* CatOp::getPred(int input_idx) const {
+  TORCH_INTERNAL_ASSERT(
+      container()->isA<kir::Kernel>(),
+      "Should only be used for Kernel container.");
   auto attr_idx = input_idx + 2;
   TORCH_INTERNAL_ASSERT(attr_idx < static_cast<int>(attributes().size()));
   auto attr = attribute(attr_idx);

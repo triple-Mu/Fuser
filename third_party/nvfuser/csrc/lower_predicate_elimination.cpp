@@ -188,7 +188,7 @@ class PredicateChcker : public IterVisitor {
         predicateSharedMemAccess(expr) || predicateProducerConsumerPair(expr) ||
         predicateNonDivisibleRootDomains(expr) ||
         predicateNonDivisibleSplit(expr) || predicateExpandReduce(expr) ||
-        predicateExpand(expr);
+        predicateResize(expr);
 
     // A cp.async op would need a predicate for either the global
     //  input or its shared mem output, or both.
@@ -540,7 +540,10 @@ class PredicateChcker : public IterVisitor {
     return false;
   }
 
-  bool predicateExpand(Expr* expr) const {
+  // Is this necessary?
+  bool predicateResize(Expr* expr) const {
+    // Temporarily disabled
+    return false;
     for (auto output : ir_utils::filterByType<TensorView>(expr->outputs())) {
       auto exprs = StmtSort::getExprsBetween(
           expr->fusion(),

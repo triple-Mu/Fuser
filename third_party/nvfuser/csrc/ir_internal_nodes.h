@@ -1465,6 +1465,8 @@ class TORCH_CUDA_CU_API IterDomain : public Val {
       bool inner_split,
       bool trim_out_of_bounds);
 
+  //! Resize an IterDomain by expanding both the left and right sides
+  //! by given widths. Optionally mark it as an rfactor domain
   static IterDomain* resize(
       IterDomain* in,
       Val* left_expansion,
@@ -2231,6 +2233,8 @@ class TORCH_CUDA_CU_API PadOp : public Expr {
  public:
   using Expr::Expr;
 
+  //! Pad a tensor as specified by a vector of integer scalars. For
+  //! the actual semantics, see the torch.pad documentation
   PadOp(
       IrBuilderPasskey passkey,
       TensorView* out,
@@ -2255,6 +2259,8 @@ class TORCH_CUDA_CU_API PadOp : public Expr {
   }
 
   std::vector<int> getPaddedAxes() const;
+
+  std::vector<Val*> getPadWidths() const;
 
   std::pair<Val*, Val*> getPadWidths(int axis) const;
 };
@@ -2292,6 +2298,8 @@ class TORCH_CUDA_CU_API SliceOp : public Expr {
   Val* in() const {
     return input(0);
   }
+
+  std::vector<Slice> getRanges() const;
 };
 
 class TORCH_CUDA_CU_API CatOp : public Expr {
@@ -2304,6 +2312,8 @@ class TORCH_CUDA_CU_API CatOp : public Expr {
       const std::vector<Val*>& inputs,
       int concatenated_dim);
 
+  //! Create a cat op with the index and predicates for codegen. Only
+  //! used for the Kernel container
   CatOp(
       IrBuilderPasskey passkey,
       Val* out,
@@ -2325,8 +2335,13 @@ class TORCH_CUDA_CU_API CatOp : public Expr {
     return attribute(0)->as<Attribute<int>>()->value;
   }
 
+  //! The index val that determines which input tensor should be used
+  //! to fill the particular output position of this expression. Only
+  //! valid after indexing
   Val* getConcatenatedDomainIndex() const;
 
+  //! When this predicate is true, the specified input tensor is used
+  //! to fill the output tensor. Only valid after indexing
   Bool* getPred(int input_idx) const;
 };
 

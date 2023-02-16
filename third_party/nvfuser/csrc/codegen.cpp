@@ -2765,6 +2765,17 @@ class CudaKernelGenerator : private OptOutConstDispatch {
     auto out = gen(cat->output(0));
     auto cat_idx = gen(cat->getConcatenatedDomainIndex());
 
+    // Generate code like:
+    // if (consumer_idx < producer_0_extent) {
+    //   consumer[consumer_idx] = produce_0[producer_idx0];
+    // } else if (consumer_idx < producer_1_extent) {
+    //   consumer[consumer_idx] = produce_1[producer_idx1];
+    // } else if (consumer_idx < producer_2_extent) {
+    //   consumer[consumer_idx] = produce_2[producer_idx2];
+    // } else {
+    //   consumer[consumer_idx] = produce_3[producer_idx3];
+    // }
+
     for (const auto i : c10::irange(cat->inputs().size())) {
       auto inp = cat->input(i)->as<kir::TensorIndex>();
       auto inp_str = gen(inp);
