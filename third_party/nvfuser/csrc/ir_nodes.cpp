@@ -1,4 +1,3 @@
-#include <arith.h>
 #include <disjoint_set.h>
 #include <ir_cloner.h>
 #include <ir_interface_nodes.h>
@@ -7,6 +6,7 @@
 #include <kernel.h>
 #include <kernel_ir.h>
 #include <lower2device.h>
+#include <ops/arith.h>
 #include <root_domain_map.h>
 #include <transform_iter.h>
 #include <transform_rfactor.h>
@@ -698,22 +698,11 @@ std::string RNGOp::toString(int indent_size) const {
   indent_size++;
   indent(ss, indent_size);
   ss << " = ";
-
-  ss << getRNGOpType() << "({";
-  bool first = true;
-  for (auto i : getShape()) {
-    if (!first) {
-      ss << ", ";
-    }
-    ss << i->toString();
-    first = false;
+  ss << getRNGOpType() << "({" << toDelimitedString(getShape()) << "}, ";
+  if (!getParameters().empty()) {
+    ss << toDelimitedString(getParameters()) << ", ";
   }
-  ss << "}";
-  for (auto i : getParameters()) {
-    ss << ", ";
-    ss << i->toString();
-  }
-  ss << ", " << dtype() << ");\n";
+  ss << dtype() << ");\n";
   return ss.str();
 }
 
@@ -1475,14 +1464,7 @@ std::string ExpandOp::toString(int indent_size) const {
   std::stringstream ss;
   indent(ss, indent_size) << out()->toString() << " = expand( " << in()
                           << ", {";
-  bool comma = false;
-  for (auto expanded_extent : expanded_extents()) {
-    if (comma) {
-      ss << ", ";
-    }
-    comma = true;
-    ss << expanded_extent;
-  }
+  ss << toDelimitedString(expanded_extents());
   ss << "} )\n";
   return ss.str();
 }
@@ -1592,16 +1574,8 @@ std::string GatherOp::toString(int indent_size) const {
   std::stringstream ss;
   indent(ss, indent_size) << out()->toString() << " = gather( "
                           << in()->toString() << ", {";
+  ss << toDelimitedString(windowShape()) << "}, {";
   bool no_comma = true;
-  for (const auto& s : windowShape()) {
-    if (!no_comma) {
-      ss << ", ";
-    }
-    ss << s;
-    no_comma = false;
-  }
-  ss << "}, {";
-  no_comma = true;
   for (const auto& pad : padWidth()) {
     if (!no_comma) {
       ss << ", ";
@@ -2467,14 +2441,7 @@ std::string TensorDomain::toString(int indent_size) const {
     ss << "[ 0 ]";
     return ss.str();
   }
-  ss << "[ ";
-  for (const auto i : c10::irange(nDims())) {
-    ss << axis(i)->toString();
-    if (i != nDims() - 1) {
-      ss << ", ";
-    }
-  }
-  ss << " ]";
+  ss << "[ " << toDelimitedString(domain()) << " ]";
   return ss.str();
 }
 
