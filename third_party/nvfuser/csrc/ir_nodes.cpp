@@ -2687,27 +2687,6 @@ void TensorDomain::swizzle(
   resetDomains();
 }
 
-void TensorDomain::expand(int dim, Val* left_expansion, Val* right_expansion) {
-  TORCH_INTERNAL_ASSERT(nDims() > 0, "Tried to do expand a 0-dim domain");
-  if (dim < 0) {
-    dim += nDims();
-  }
-
-  TORCH_INTERNAL_ASSERT(
-      dim >= 0 && (unsigned int)dim < nDims(),
-      "Tried to expand axis outside TensorDomain's range.");
-
-  IterDomain* id = axis(dim);
-
-  TORCH_INTERNAL_ASSERT(
-      !id->isMmaSwizzled(),
-      "Further transformation on warp mapped id's not allowed.");
-
-  auto expanded_id = IterDomain::resize(id, left_expansion, right_expansion);
-  domain_.at(dim) = expanded_id;
-  resetDomains();
-}
-
 std::vector<IterDomain*> TensorDomain::noReductions(
     const std::vector<IterDomain*>& td) {
   std::vector<IterDomain*> noReductionDomain;

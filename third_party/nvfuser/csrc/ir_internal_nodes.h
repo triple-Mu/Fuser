@@ -1868,8 +1868,6 @@ class TORCH_CUDA_CU_API TensorDomain : public Val {
       int y,
       SwizzleMode swizzle_mode = SwizzleMode::Data);
 
-  void expand(int dim, Val* left_expansion, Val* right_expansion);
-
   // Transform TensorView according to merge and split transformations
   TensorDomain* view(const AnalyzeViewResult& view_analysis);
 
