@@ -20,10 +20,7 @@
 #include <regex>
 #include <sstream>
 
-namespace torch {
-namespace jit {
-namespace fuser {
-namespace cuda {
+namespace nvfuser {
 
 namespace {
 
@@ -3244,7 +3241,4 @@ Bool* CatOp::getPred(int input_idx) const {
   return pred;
 }
 
-} // namespace cuda
-} // namespace fuser
-} // namespace jit
-} // namespace torch
+} // namespace nvfuser

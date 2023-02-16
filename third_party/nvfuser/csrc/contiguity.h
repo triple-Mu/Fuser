@@ -8,10 +8,7 @@
 #include <lower_shift.h>
 #include <lower_trivial_broadcast.h>
 
-namespace torch {
-namespace jit {
-namespace fuser {
-namespace cuda {
+namespace nvfuser {
 
 // Goes through the transformations associated with a series of ids and root
 // ids. Checks the ordering of the iteration domains through these operations to
@@ -313,7 +310,4 @@ class ContigIDs : public OptInDispatch {
   std::unordered_set<IterDomain*> expand_deps_;
 };
 
-} // namespace cuda
-} // namespace fuser
-} // namespace jit
-} // namespace torch
+} // namespace nvfuser

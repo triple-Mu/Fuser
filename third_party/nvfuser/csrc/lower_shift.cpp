@@ -12,10 +12,7 @@
 
 #include <functional>
 
-namespace torch {
-namespace jit {
-namespace fuser {
-namespace cuda {
+namespace nvfuser {
 
 Expr* ShiftPredicateInserter::insert(
     Expr* expr,
@@ -853,7 +850,4 @@ std::unordered_map<IterDomain*, Val*> HaloInfo::buildConcreteHaloExtentMap(
   return local_halo_info.extent_map_;
 }
 
-} // namespace cuda
-} // namespace fuser
-} // namespace jit
-} // namespace torch
+} // namespace nvfuser

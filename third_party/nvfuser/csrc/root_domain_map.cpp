@@ -5,10 +5,7 @@
 
 #include <sstream>
 
-namespace torch {
-namespace jit {
-namespace fuser {
-namespace cuda {
+namespace nvfuser {
 
 std::unordered_map<IterDomain*, IterDomain*> RootDomainMap::
     mapProducerToConsumer(
@@ -1360,7 +1357,4 @@ std::string ExactRootDomainMap::toString() const {
   return eq_sets_.toString();
 }
 
-} // namespace cuda
-} // namespace fuser
-} // namespace jit
-} // namespace torch
+} // namespace nvfuser

@@ -6,10 +6,7 @@
 #include <transform_view.h>
 #include <type_promotion.h>
 
-namespace torch {
-namespace jit {
-namespace fuser {
-namespace cuda {
+namespace nvfuser {
 
 namespace {
 
@@ -594,7 +591,4 @@ TensorView* slice(TensorView* inp, const std::vector<Slice>& ranges) {
   return out;
 }
 
-} // namespace cuda
-} // namespace fuser
-} // namespace jit
-} // namespace torch
+} // namespace nvfuser

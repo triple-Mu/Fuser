@@ -8,10 +8,7 @@
 
 #include <lower_index.h>
 
-namespace torch {
-namespace jit {
-namespace fuser {
-namespace cuda {
+namespace nvfuser {
 
 Val* IndexLowering::lowerSrcIndex(
     Val* src,
@@ -1414,7 +1411,4 @@ void IndexLowering::handle(const CatOp* cat) {
   GpuLower::current()->propagateExprInfo(cat, lowered);
 }
 
-} // namespace cuda
-} // namespace fuser
-} // namespace jit
-} // namespace torch
+} // namespace nvfuser

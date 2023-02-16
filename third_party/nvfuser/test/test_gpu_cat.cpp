@@ -9,11 +9,7 @@
 #include <test/test_gpu_validator.h>
 #include <test/test_utils.h>
 
-// Tests go in torch::jit
-namespace torch {
-namespace jit {
-
-using namespace torch::jit::fuser::cuda;
+namespace nvfuser {
 
 TEST_F(NVFuserTest, FusionIterDomainExpand1_CUDA) {
   Fusion fusion;
@@ -38,7 +34,7 @@ TEST_F(NVFuserTest, FusionIterDomainExpand1_CUDA) {
 
   auto t0 = at::randn({9}, options);
 
-  std::vector<IValue> aten_inputs({t0});
+  std::vector<c10::IValue> aten_inputs({t0});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -72,7 +68,7 @@ TEST_F(NVFuserTest, FusionIterDomainExpand2_CUDA) {
 
   auto t0 = at::randn({19}, options);
 
-  std::vector<IValue> aten_inputs({t0});
+  std::vector<c10::IValue> aten_inputs({t0});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -102,7 +98,7 @@ TEST_F(NVFuserTest, FusionIterDomainExpand3_1_CUDA) {
 
   auto t0 = at::randn({19, 7}, options);
 
-  std::vector<IValue> aten_inputs({t0});
+  std::vector<c10::IValue> aten_inputs({t0});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -132,7 +128,7 @@ TEST_F(NVFuserTest, FusionIterDomainExpand3_2_CUDA) {
 
   auto t0 = at::randn({19, 7}, options);
 
-  std::vector<IValue> aten_inputs({t0});
+  std::vector<c10::IValue> aten_inputs({t0});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -163,7 +159,7 @@ TEST_F(NVFuserTest, FusionIterDomainExpand4_CUDA) {
 
   auto t0 = at::randn({19, 7}, options);
 
-  std::vector<IValue> aten_inputs({t0});
+  std::vector<c10::IValue> aten_inputs({t0});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -195,7 +191,7 @@ TEST_F(NVFuserTest, FusionIterDomainExpand5_CUDA) {
 
   auto t0 = at::randn({7}, options);
 
-  std::vector<IValue> aten_inputs({t0});
+  std::vector<c10::IValue> aten_inputs({t0});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -233,7 +229,7 @@ TEST_F(NVFuserTest, FusionIterDomainExpand6_CUDA) {
 
   auto t0 = at::randn({7, 11}, options);
 
-  std::vector<IValue> aten_inputs({t0});
+  std::vector<c10::IValue> aten_inputs({t0});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -270,7 +266,7 @@ TEST_F(NVFuserTest, FusionIterDomainExpand7_CUDA) {
 
   auto t0 = at::randn({11}, options);
 
-  std::vector<IValue> aten_inputs({t0});
+  std::vector<c10::IValue> aten_inputs({t0});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -307,7 +303,7 @@ TEST_F(NVFuserTest, FusionIterDomainExpand8_CUDA) {
 
   auto t0 = at::randn({11}, options);
 
-  std::vector<IValue> aten_inputs({t0});
+  std::vector<c10::IValue> aten_inputs({t0});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -344,7 +340,7 @@ TEST_F(NVFuserTest, FusionIterDomainExpand9_CUDA) {
 
   auto t0 = at::randn({11}, options);
 
-  std::vector<IValue> aten_inputs({t0});
+  std::vector<c10::IValue> aten_inputs({t0});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -384,7 +380,7 @@ TEST_F(NVFuserTest, FusionIterDomainExpand10_CUDA) {
 
   auto t0 = at::randn({11}, options);
 
-  std::vector<IValue> aten_inputs({t0});
+  std::vector<c10::IValue> aten_inputs({t0});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -412,7 +408,7 @@ TEST_F(NVFuserTest, FusionPad1_CUDA) {
   at::manual_seed(0);
 
   auto t0 = at::randn(shape, options);
-  std::vector<IValue> aten_inputs({t0});
+  std::vector<c10::IValue> aten_inputs({t0});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -444,7 +440,7 @@ TEST_F(NVFuserTest, FusionPad2_CUDA) {
   at::manual_seed(0);
 
   auto t0 = at::randn(shape, options);
-  std::vector<IValue> aten_inputs({t0});
+  std::vector<c10::IValue> aten_inputs({t0});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -498,7 +494,7 @@ TEST_F(NVFuserTest, FusionPad3_CUDA) {
 
   auto t0 = at::randn(shape, options);
   auto t1 = at::randn(padded_shape, options);
-  std::vector<IValue> aten_inputs({t0, t1});
+  std::vector<c10::IValue> aten_inputs({t0, t1});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -538,7 +534,7 @@ TEST_F(NVFuserTest, FusionPad4_CUDA) {
   at::manual_seed(0);
 
   auto t0 = at::randn(shape, options);
-  std::vector<IValue> aten_inputs({t0});
+  std::vector<c10::IValue> aten_inputs({t0});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -574,7 +570,7 @@ TEST_F(NVFuserTest, FusionPad5_CUDA) {
   at::manual_seed(0);
 
   auto t0 = at::randn(shape, options);
-  std::vector<IValue> aten_inputs({t0});
+  std::vector<c10::IValue> aten_inputs({t0});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -624,7 +620,7 @@ TEST_F(NVFuserTest, FusionPad6_CUDA) {
 
   auto t0 = at::randn(shape, options);
   auto t1 = at::randn(padded_shape, options);
-  std::vector<IValue> aten_inputs({t0, t1});
+  std::vector<c10::IValue> aten_inputs({t0, t1});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -661,7 +657,7 @@ TEST_F(NVFuserTest, FusionCat1_CUDA) {
 
   auto t0 = at::randn(shape0, options);
   auto t1 = at::randn(shape1, options);
-  std::vector<IValue> aten_inputs({t0, t1});
+  std::vector<c10::IValue> aten_inputs({t0, t1});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -701,7 +697,7 @@ TEST_F(NVFuserTest, FusionCat2_CUDA) {
 
   auto t0 = at::randn(shape0, options);
   auto t1 = at::randn(shape1, options);
-  std::vector<IValue> aten_inputs({t0, t1});
+  std::vector<c10::IValue> aten_inputs({t0, t1});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -744,7 +740,7 @@ TEST_F(NVFuserTest, FusionCat3_CUDA) {
 
   auto t0 = at::randn(shape0, options);
   auto t1 = at::randn(shape1, options);
-  std::vector<IValue> aten_inputs({t0, t1});
+  std::vector<c10::IValue> aten_inputs({t0, t1});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -790,7 +786,7 @@ TEST_F(NVFuserTest, FusionCat4_CUDA) {
 
   auto t0 = at::randn(shape0, options);
   auto t1 = at::randn(shape1, options);
-  std::vector<IValue> aten_inputs({t0, t1});
+  std::vector<c10::IValue> aten_inputs({t0, t1});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -841,7 +837,7 @@ TEST_F(NVFuserTest, FusionCat5_CUDA) {
   auto t0 = at::randn(shape0, options);
   auto t1 = at::randn(shape1, options);
   auto t2 = at::randn(shape2, options);
-  std::vector<IValue> aten_inputs({t0, t1, t2});
+  std::vector<c10::IValue> aten_inputs({t0, t1, t2});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -890,7 +886,7 @@ TEST_F(NVFuserTest, FusionCat6_CUDA) {
   auto t0 = at::randn(shape0, options);
   auto t1 = at::randn(shape1, options);
   auto t2 = at::randn(shape2, options);
-  std::vector<IValue> aten_inputs({t0, t1, t2});
+  std::vector<c10::IValue> aten_inputs({t0, t1, t2});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -947,7 +943,7 @@ TEST_F(NVFuserTest, FusionCat7_CUDA) {
       aten_inputs.emplace_back(at::randn(shape, options));
     }
 
-    std::vector<IValue> aten_inputs_ivalue(
+    std::vector<c10::IValue> aten_inputs_ivalue(
         {aten_inputs.begin(), aten_inputs.end()});
 
     FusionExecutor fe;
@@ -983,7 +979,7 @@ TEST_F(NVFuserTest, FusionSlice1_CUDA) {
   at::manual_seed(0);
 
   auto t0 = at::randn(shape, options);
-  std::vector<IValue> aten_inputs({t0});
+  std::vector<c10::IValue> aten_inputs({t0});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -1026,7 +1022,7 @@ TEST_F(NVFuserTest, FusionSlice2_CUDA) {
   at::manual_seed(0);
 
   auto t0 = at::randn(shape, options);
-  std::vector<IValue> aten_inputs({t0});
+  std::vector<c10::IValue> aten_inputs({t0});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -1142,7 +1138,7 @@ TEST_F(NVFuserTest, FusionSlice4_CUDA) {
   at::manual_seed(0);
 
   auto t0 = at::randn(shape, options);
-  std::vector<IValue> aten_inputs({t0});
+  std::vector<c10::IValue> aten_inputs({t0});
 
   FusionExecutor fe;
   fe.compileFusion(&fusion, aten_inputs);
@@ -1153,5 +1149,4 @@ TEST_F(NVFuserTest, FusionSlice4_CUDA) {
   testValidate(&fusion, cg_outputs, aten_inputs, {ref}, __LINE__, __FILE__);
 }
 
-} // namespace jit
-} // namespace torch
+} // namespace nvfuser

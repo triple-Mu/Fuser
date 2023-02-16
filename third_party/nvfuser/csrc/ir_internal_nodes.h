@@ -15,10 +15,7 @@
 //! \todo Add testing of sameAs functions for these nodes
 //!
 
-namespace torch {
-namespace jit {
-namespace fuser {
-namespace cuda {
+namespace nvfuser {
 
 class ViewTransform;
 class Scope;
@@ -2332,7 +2329,4 @@ class TORCH_CUDA_CU_API CatOp : public Expr {
   Bool* getPred(int input_idx) const;
 };
 
-} // namespace cuda
-} // namespace fuser
-} // namespace jit
-} // namespace torch
+} // namespace nvfuser
