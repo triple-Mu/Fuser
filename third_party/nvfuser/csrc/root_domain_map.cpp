@@ -86,9 +86,6 @@ std::unordered_map<IterDomain*, IterDomain*> PairwiseRootDomainMap::map(
     return {};
   }
 
-  // TODO: Filtering conditions below are growing. Should be
-  // refactored.
-
   std::vector<bool> broadcast_flags;
   if (BroadcastOp* bop =
           dynamic_cast<BroadcastOp*>(consumer_tv_->definition())) {
@@ -116,13 +113,6 @@ std::unordered_map<IterDomain*, IterDomain*> PairwiseRootDomainMap::map(
     selected_id = gop->getSelectAxis();
     select_skip_consumer = true;
   }
-
-#if 0  
-  IterDomain* concat_id = nullptr;
-  if (auto cat = dynamic_cast<CatOp*>(consumer_tv_->definition())) {
-    concat_id = consumer->getRootDomain().at(cat->dim());
-  }
-#endif
 
   std::unordered_map<IterDomain*, IterDomain*> dom_map;
   const auto producer_root =
@@ -167,26 +157,6 @@ std::unordered_map<IterDomain*, IterDomain*> PairwiseRootDomainMap::map(
       continue;
     }
 
-#if 0
-    if (require_same_extent_ && consumer_tv_->definition()->isA<PadOp>()) {
-      auto paded_axes =
-          consumer_tv_->definition()->as<PadOp>()->getPaddedAxes();
-      if (std::find(paded_axes.begin(), paded_axes.end(), itc) !=
-          paded_axes.end()) {
-        itc++;
-        itp++;
-        continue;
-      }
-    }
-
-
-    if (require_same_extent_ && concat_id != nullptr &&
-        consumer_id == concat_id) {
-      itc++;
-      itp++;
-      continue;
-    }
-#endif
     IterDomain* map_key_id = producer_id;
     IterDomain* map_value_id = consumer_id;
     if (!producer_to_consumer) {
