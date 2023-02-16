@@ -554,7 +554,15 @@ BestEffortReplay::BestEffortReplay(
       }
     }
 
-    // TODO: Something to do for Expand?
+    if (replay_expr->isA<Resize>()) {
+      auto r_resize = replay_expr->as<Resize>();
+      auto t_resize = target_expr->as<Resize>();
+      if (!r_resize->leftExpand()->sameAs(t_resize->leftExpand()) ||
+          !r_resize->rightExpand()->sameAs(t_resize->rightExpand())) {
+        TORCH_INTERNAL_ASSERT(!replay_has_rfactor_inp, err_str);
+        continue;
+      }
+    }
 
     // Take replay expr inputs out of map:
     for (const auto t_i : c10::irange(target_id_inps.size())) {

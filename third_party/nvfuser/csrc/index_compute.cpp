@@ -588,8 +588,8 @@ void IndexCompute::handle(Resize* expand) {
     extent_map_[in_id] = getExtent(out_id);
   } else {
     index_map_[in_id] = sub(out_ind, expand->leftExpand());
-    extent_map_[in_id] =
-        sub(sub(getExtent(out_id), expand->leftExpand()), expand->rightExpand());
+    extent_map_[in_id] = sub(
+        sub(getExtent(out_id), expand->leftExpand()), expand->rightExpand());
   }
 }
 
