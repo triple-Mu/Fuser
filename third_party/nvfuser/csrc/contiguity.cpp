@@ -324,10 +324,10 @@ void OrderedIdInformation::handle(Swizzle2D* swizzle) {
   }
 }
 
-void OrderedIdInformation::handle(Resize* expand) {
+void OrderedIdInformation::handle(Resize* resize) {
   // Find inputs in the active_ids_ vector
   const auto in_it =
-      std::find(active_ids_.begin(), active_ids_.end(), expand->in());
+      std::find(active_ids_.begin(), active_ids_.end(), resize->in());
 
   if (in_it == active_ids_.end()) {
     return;
@@ -336,12 +336,12 @@ void OrderedIdInformation::handle(Resize* expand) {
   auto in_pos = std::distance(active_ids_.begin(), in_it);
 
   // Find inputs in the ordered transforms map
-  const auto in_ordered_it = consistently_ordered_ids_.find(expand->in());
+  const auto in_ordered_it = consistently_ordered_ids_.find(resize->in());
 
   bool in_ordered = in_ordered_it != consistently_ordered_ids_.end();
 
   // Get root ids of the two inputs
-  const auto in_root_ids_it = id_to_root_ids_.find(expand->in());
+  const auto in_root_ids_it = id_to_root_ids_.find(resize->in());
 
   TORCH_INTERNAL_ASSERT(
       in_root_ids_it != id_to_root_ids_.end(),
@@ -351,19 +351,19 @@ void OrderedIdInformation::handle(Resize* expand) {
 
   // Update map for outputs
   // Remove inputs from the active_ids_ and insert the output ID
-  active_ids_[in_pos] = expand->out();
+  active_ids_[in_pos] = resize->out();
 
   // Not completely certain, but propagating these properties should e
   // fine
   if (in_ordered) {
-    consistently_ordered_ids_.emplace(expand->out());
+    consistently_ordered_ids_.emplace(resize->out());
   }
 
-  if (exclusivelyConsumesRoots(expand->in())) {
-    exclusively_consumes_roots_.emplace(expand->out());
+  if (exclusivelyConsumesRoots(resize->in())) {
+    exclusively_consumes_roots_.emplace(resize->out());
   }
 
-  id_to_root_ids_[expand->out()] = in_root_ids;
+  id_to_root_ids_[resize->out()] = in_root_ids;
 }
 
 NonDivisibleSplitDependencies::NonDivisibleSplitDependencies(
@@ -530,16 +530,16 @@ void ContigIDs::build(const std::vector<IterDomain*>& ids) {
         {root_domain_.begin(), root_domain_.end()},
         {ids.begin(), ids.end()});
     for (auto expr : exprs) {
-      if (auto expand = dynamic_cast<Resize*>(expr)) {
-        expand_deps_.insert(expand->out());
+      if (auto resize = dynamic_cast<Resize*>(expr)) {
+        resize_deps_.insert(resize->out());
       } else {
         if (std::any_of(
                 expr->inputs().begin(), expr->inputs().end(), [&](Val* inp) {
                   return inp->isA<IterDomain>() &&
-                      expand_deps_.count(inp->as<IterDomain>());
+                      resize_deps_.count(inp->as<IterDomain>());
                 })) {
           for (auto out : ir_utils::filterByType<IterDomain>(expr->outputs())) {
-            expand_deps_.insert(out);
+            resize_deps_.insert(out);
           }
         }
       }
@@ -615,7 +615,9 @@ void ContigIDs::handle(Merge* merge) {
     return;
   }
 
-  if (expand_deps_.count(merge->out())) {
+  // Don't allow contig indexing after resize as we need traverse back
+  // at least to direct outputs of resize ops
+  if (resize_deps_.count(merge->out())) {
     return;
   }
 

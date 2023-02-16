@@ -2975,9 +2975,10 @@ Resize::Resize(
 
 std::string Resize::toString(int indent_size) const {
   std::stringstream ss;
-  ss << "Expand: ";
+  ss << "Resize: ";
   ss << in()->toString();
-  ss << " by " << left()->toString() << " and " << right()->toString();
+  ss << " by " << leftExpand()->toString() << " and "
+     << rightExpand()->toString();
   ss << " -> ";
   ss << out()->toString();
   ss << "\n";
@@ -2985,7 +2986,7 @@ std::string Resize::toString(int indent_size) const {
 }
 
 std::string Resize::toInlineString(int indent_size) const {
-  TORCH_CHECK(false, "Expand can not be printed inline");
+  TORCH_CHECK(false, "Resize can not be printed inline");
 }
 
 NVFUSER_DEFINE_CLONE_AND_CREATE(Resize)

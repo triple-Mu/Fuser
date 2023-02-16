@@ -2131,16 +2131,19 @@ class TORCH_CUDA_CU_API Swizzle2D : public Expr {
   }
 };
 
+//! IterDomain expression to resize
 class TORCH_CUDA_CU_API Resize : public Expr {
  public:
   using Expr::Expr;
 
+  // Expand the input domain by left_expand and right_expand for each
+  // of the start and end sides, respectively
   Resize(
       IrBuilderPasskey,
       IterDomain* out,
       IterDomain* in,
-      Val* left,
-      Val* right);
+      Val* left_expand,
+      Val* right_expand);
 
   NVFUSER_DECLARE_CLONE_AND_CREATE
 
@@ -2159,11 +2162,11 @@ class TORCH_CUDA_CU_API Resize : public Expr {
     return input(0)->as<IterDomain>();
   }
 
-  Val* left() const {
+  Val* leftExpand() const {
     return attributeVal(0);
   }
 
-  Val* right() const {
+  Val* rightExpand() const {
     return attributeVal(1);
   }
 };

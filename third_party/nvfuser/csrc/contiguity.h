@@ -250,9 +250,7 @@ class ContigIDs : public OptInDispatch {
   // cases, depending on specific swizzle type and axes.
   void handle(Swizzle2D* swizzle) override {}
 
-  // Disable contig indexing as indexing with an expanded ID need to
-  // get back to its input ID
-  void handle(Resize* expand) override {}
+  void handle(Resize* resize) override {}
 
   IterDomain* getCAIndexConcreteId(IterDomain* id) const;
 
@@ -307,7 +305,8 @@ class ContigIDs : public OptInDispatch {
 
   NonDivisibleSplitDependencies non_divisible_id_info_;
 
-  std::unordered_set<IterDomain*> expand_deps_;
+  //! IDs that depend on resize output IDs
+  std::unordered_set<IterDomain*> resize_deps_;
 };
 
 } // namespace nvfuser

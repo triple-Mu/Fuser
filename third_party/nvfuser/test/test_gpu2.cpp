@@ -4336,8 +4336,10 @@ TEST_F(NVFuserTest, FusionVectorizeMisalignedStride_CUDA) {
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   const int bx = 128;
   const int by = 2049;
-  at::Tensor t0 = at::randn({bx, by}, options).index({"...", at::indexing::Slice(3)});
-  at::Tensor t1 = at::randn({bx, by}, options).index({"...", at::indexing::Slice(3)});
+  at::Tensor t0 =
+      at::randn({bx, by}, options).index({"...", at::indexing::Slice(3)});
+  at::Tensor t1 =
+      at::randn({bx, by}, options).index({"...", at::indexing::Slice(3)});
   std::vector<c10::IValue> aten_inputs = {t0, t1};
 
   FusionExecutor fe;
@@ -4388,8 +4390,10 @@ TEST_F(NVFuserTest, FusionVectorizeMisalignedStrideFail_CUDA) {
   const int bx = 128;
   const int by = 2049;
 
-  at::Tensor t0 = at::randn({bx, by}, options).index({"...", at::indexing::Slice(3)});
-  at::Tensor t1 = at::randn({bx, by}, options).index({"...", at::indexing::Slice(3)});
+  at::Tensor t0 =
+      at::randn({bx, by}, options).index({"...", at::indexing::Slice(3)});
+  at::Tensor t1 =
+      at::randn({bx, by}, options).index({"...", at::indexing::Slice(3)});
   std::vector<c10::IValue> aten_inputs = {t0, t1};
 
   FusionExecutor fe;
