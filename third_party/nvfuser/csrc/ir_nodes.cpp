@@ -2158,18 +2158,18 @@ IterDomain* IterDomain::resize(
       "Non-zero stop offset not considered: ",
       in->toString());
 
-  Val* expanded_id_size =
+  Val* resized_id_size =
       add(add(in->extent(), left_expansion), right_expansion);
 
-  auto expanded_id =
-      IterDomainBuilder(in->container()->zeroVal(), expanded_id_size->as<Int>())
+  auto resized_id =
+      IterDomainBuilder(in->container()->zeroVal(), resized_id_size->as<Int>())
           .is_rfactor_domain(mark_as_rfactor)
           .build();
 
   IrBuilder::create<Resize>(
-      in->container(), expanded_id, in, left_expansion, right_expansion);
+      in->container(), resized_id, in, left_expansion, right_expansion);
 
-  return expanded_id;
+  return resized_id;
 }
 
 // TODO: We should change parallelize interface to be on tensorview or at least
