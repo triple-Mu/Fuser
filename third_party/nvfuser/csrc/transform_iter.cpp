@@ -191,7 +191,7 @@ void ReplayTransformations::handle(Resize* exp) {
       leaf_ids_.find(mapped) != leaf_ids_.end(),
       "Transform traversal failed, modified a node but it was not a leaf node.");
 
-  auto out = IterDomain::resize(mapped, exp->left(), exp->right());
+  auto out = IterDomain::resize(mapped, exp->leftExpand(), exp->rightExpand());
 
   leaf_ids_.erase(mapped);
 
