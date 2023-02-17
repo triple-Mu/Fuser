@@ -567,7 +567,7 @@ TensorView* slice(TensorView* inp, const std::vector<Slice>& ranges) {
     auto out_root_id = inp_root_id->cloneWithoutRFactor();
     root_ids.at(idx) = out_root_id;
     auto range = normalize_slice_range(ranges.at(idx), inp_root_id->extent());
-    normalized_ranges.push_back(range);
+    normalized_ranges.at(idx) = range;
     if (range.start->isZeroInt() && range.stop->sameAs(inp_root_id->extent()) &&
         range.step->isOneInt()) {
       // This dim doesn't need slicing

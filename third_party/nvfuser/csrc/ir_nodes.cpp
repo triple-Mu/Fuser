@@ -3180,6 +3180,19 @@ std::string SliceOp::toInlineString(int indent_size) const {
   TORCH_CHECK(false, "Tensor op can not be printed inline");
 }
 
+std::vector<Slice> SliceOp::getRanges() const {
+  TORCH_INTERNAL_ASSERT(attributes_.size() % 3 == 0);
+  auto ndims = attributes_.size() / 3;
+  std::vector<Slice> ranges(ndims);
+  for (const auto i : c10::irange(ndims)) {
+    ranges.at(i) = Slice{
+        .start = attribute(i * 3)->as<Val>(),
+        .stop = attribute(i * 3 + 1)->as<Val>(),
+        .step = attribute(i * 3 + 2)->as<Val>()};
+  }
+  return ranges;
+}
+
 CatOp::CatOp(
     IrBuilderPasskey passkey,
     Val* out,

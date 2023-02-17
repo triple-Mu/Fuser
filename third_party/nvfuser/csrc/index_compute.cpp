@@ -1574,8 +1574,8 @@ std::vector<Val*> Index::getGlobalProducerStridedIndices(
     const std::unordered_map<IterDomain*, Val*>& override_index) {
   FUSER_PERF_SCOPE("GpuLower::Lower::getGlobalProducerIndex");
 
-  auto root_indices = getProducerRootIndices(
-      producer_tv, consumer_tv, loops, override_index);
+  auto root_indices =
+      getProducerRootIndices(producer_tv, consumer_tv, loops, override_index);
 
   const auto& root_dom = producer_tv->getMaybeRFactorDomain();
 
@@ -2183,7 +2183,8 @@ std::vector<Val*> Index::getGlobalConsumerStridedIndices(
   auto index_from_id_graph = getTensorIndexFromIdGraph(loops, consumer_tv);
   auto consumer_indexing = index_from_id_graph.index;
   auto strides = getStrides(consumer_tv);
-  auto root_inds = getConsumerRootIndices(consumer_tv, loops, index_from_id_graph);
+  auto root_inds =
+      getConsumerRootIndices(consumer_tv, loops, index_from_id_graph);
 
   // Global striding
   auto vectorize_shift =
@@ -2474,11 +2475,40 @@ std::vector<PredicateDomainInfo> getPredicateContigIds(
     const std::unordered_map<IterDomain*, Val*>& consumer_index_map) {
   const auto gpu_lower = GpuLower::current();
 
-  // TODO: revisit
+  // Where there's a resize expr between the root and the rfactor
+  // domains, predicate the rfactor domain. Otherwise, predicate the
+  // root domain. The actual size of an IterDomain after resize
+  // changes, and the output IterDomain needs to be used to generate
+  // its predicate.
+  auto has_resize = [](TensorView* tv) -> bool {
+    if (!tv->hasRFactor()) {
+      return false;
+    }
+    auto root_to_rf_exprs = StmtSort::getExprsBetween(
+        tv->fusion(),
+        {tv->getRootDomain().begin(), tv->getRootDomain().end()},
+        {tv->getRFactorDomain().begin(), tv->getRFactorDomain().end()});
+    return std::any_of(
+        root_to_rf_exprs.begin(), root_to_rf_exprs.end(), [](Expr* expr) {
+          return expr->isA<Resize>();
+        });
+  };
+
+  const auto& consumer_root_domain = has_resize(consumer_tv)
+      ? consumer_tv->getMaybeRFactorDomain()
+      : consumer_tv->getRootDomain();
+#if 0
+#if 1
   const auto& consumer_root_domain =
-      ir_utils::isReductionOp(consumer_tv->definition())
+      ir_utils::isReductionOp(consumer_tv->definition()) ||
+      consumer_tv->definition()->isA<GatherOp>()
       ? consumer_tv->getRootDomain()
       : consumer_tv->getMaybeRFactorDomain();
+#else
+  const auto& consumer_root_domain =
+      consumer_tv->getRootDomain();
+#endif
+#endif
 
   if (consumer_root_domain.empty()) {
     return std::vector<PredicateDomainInfo>();
@@ -2714,6 +2744,9 @@ std::pair<Val*, Val*> getStartAndStopOffsetsForGather(
         GpuLower::current()->kernel()->zeroVal(),
         GpuLower::current()->kernel()->zeroVal()};
   }
+
+  std::cerr << "getStartAndStopOffsetsForGather: " << consumer_tv->toString()
+            << ", " << consumer_id->toString() << std::endl;
 
   const auto root_axis_pos = consumer_tv->domain()->rootPosOf(consumer_id);
 
@@ -3145,7 +3178,7 @@ std::vector<RootPredicateInfo> Index::getReferenceRootPredicates(
     auto start_pred =
         SimplifyingIrBuilder::geExpr(
             offsetted_start_index, GpuLower::current()->kernel()->zeroVal())
-        ->as<Bool>();
+            ->as<Bool>();
     info.start_predicate_ = start_pred;
 
     // Build predicates for stop positions as:
