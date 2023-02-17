@@ -1326,13 +1326,14 @@ void IndexLowering::allocateUniqueFusedReduction(
 }
 
 void IndexLowering::handle(const PadOp* pad) {
-  // Create the predicate that determines
-  // which of lhs and rhs tensors should be used as the producer. Then
-  // this expr can be converted to where expr
+  // Convert to a where op as:
+  // consumer[consumer_idx] = (produer_idx >= 0 && produer_idx <
+  //                           producer_extent) ?
+  //     producer[producer_idx] :
+  //     0;
 
   auto producer_tv = pad->in()->as<TensorView>();
   auto consumer_tv = pad->out()->as<TensorView>();
-
   auto producer_doms =
       TensorDomain::noReductions(producer_tv->getMaybeRFactorDomain());
 
@@ -1345,20 +1346,19 @@ void IndexLowering::handle(const PadOp* pad) {
       ? static_cast<Val*>(IrBuilder::create<Double>(0, dt))
       : static_cast<Val*>(IrBuilder::create<Int>(0, dt));
 
-  const auto indices = Index::getProducerPerDimLogicalIndex(
+  const auto producer_root_indices = Index::getProducerPerDimLogicalIndex(
       producer_tv, consumer_tv, for_loops_);
 
+  // Build a predicate for where
   Val* pred = IrBuilder::create<Bool>(true);
-
-  // TODO: Currently assumes the start and stop offsets of producer
-  // domains are always zero
   for (auto padded_axis : pad->getPaddedAxes()) {
-    auto producer_idx = indices.at(padded_axis);
+    auto producer_idx = producer_root_indices.at(padded_axis);
     auto producer_root_id = producer_doms.at(padded_axis);
+    TORCH_INTERNAL_ASSERT(!producer_root_id->isPartial());
     pred = SimplifyingIrBuilder::andExpr(
         pred,
+        // idx >= 0 && idx < extent
         SimplifyingIrBuilder::andExpr(
-            // idx >= 0 && idx < extent
             SimplifyingIrBuilder::geExpr(
                 producer_idx, GpuLower::current()->kernel()->zeroVal()),
             SimplifyingIrBuilder::ltExpr(
@@ -1371,6 +1371,8 @@ void IndexLowering::handle(const PadOp* pad) {
 }
 
 void IndexLowering::handle(const SliceOp* slice) {
+  // TODO: Consider converting SliceOp to Set at the beginning of
+  // lowering
   const auto in = lowerSrcIndex(slice->in(), slice->out());
   const auto out = lowerDstIndex(slice->out());
 
@@ -1380,7 +1382,10 @@ void IndexLowering::handle(const SliceOp* slice) {
 
 void IndexLowering::handle(const CatOp* cat) {
   // It's possible to lower CatOp to a series of IfThenElse or Where,
-  // but
+  // but that would going to look really ugly. For now, rely on
+  // CudaKernelGenerator to produce code based on the predicates
+  // genereated here.
+
   const auto out = lowerDstIndex(cat->output(0));
   auto out_indices = Index::getPerDimLogicalIndex(
       cat->output(0)->as<TensorView>(), for_loops_);
