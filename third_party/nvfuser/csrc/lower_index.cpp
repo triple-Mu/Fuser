@@ -1354,7 +1354,7 @@ void IndexLowering::handle(const PadOp* pad) {
   for (auto padded_axis : pad->getPaddedAxes()) {
     auto producer_idx = producer_root_indices.at(padded_axis);
     auto producer_root_id = producer_doms.at(padded_axis);
-    TORCH_INTERNAL_ASSERT(!producer_root_id->isPartial());
+    TORCH_INTERNAL_ASSERT(!producer_root_id->maybePartial());
     pred = SimplifyingIrBuilder::andExpr(
         pred,
         // idx >= 0 && idx < extent
@@ -1387,7 +1387,7 @@ void IndexLowering::handle(const CatOp* cat) {
   // genereated here.
 
   const auto out = lowerDstIndex(cat->output(0));
-  auto out_indices = Index::getPerDimLogicalIndex(
+  auto out_indices = Index::getConsumerPerDimLogicalIndex(
       cat->output(0)->as<TensorView>(), for_loops_);
   auto concatenated_dim_idx = out_indices.at(cat->concatenatedDim());
 

@@ -1360,6 +1360,8 @@ std::unordered_map<IterDomain*, IterDomain*> invertOneToOneMap(
 
 } // namespace
 
+// TODO: Flip to 0
+#if 1
 std::vector<Val*> Index::getGlobalProducerStridedIndices(
     TensorView* producer_tv,
     const TensorView* consumer_tv,
@@ -1563,6 +1565,89 @@ std::vector<Val*> Index::getGlobalProducerStridedIndices(
 
   return strided_inds;
 }
+
+#else
+std::vector<Val*> Index::getGlobalProducerStridedIndices(
+    TensorView* producer_tv,
+    const TensorView* consumer_tv,
+    const std::vector<kir::ForLoop*>& loops,
+    const std::unordered_map<IterDomain*, Val*>& override_index) {
+  FUSER_PERF_SCOPE("GpuLower::Lower::getGlobalProducerIndex");
+
+  auto root_indices = getProducerRootIndices(
+      producer_tv, consumer_tv, loops, override_index);
+
+  const auto& root_dom = producer_tv->getMaybeRFactorDomain();
+
+  // TODO: Abstract stride logic to reuse with consumer indexing
+  std::vector<Val*> strides(root_dom.size(), nullptr);
+  {
+    int stride_i = 0;
+    for (const auto i : c10::irange(root_dom.size())) {
+      if (root_dom[i]->isReduction()) {
+        strides[i] = GpuLower::current()->kernel()->oneVal();
+        continue;
+      }
+      std::stringstream ss;
+      ss << "T" << producer_tv->name() << ".stride[" << stride_i++ << "]";
+      strides[i] =
+          SimplifyingIrBuilder::create<NamedScalar>(ss.str(), DataType::Int);
+    }
+  }
+
+  TORCH_INTERNAL_ASSERT(
+      root_dom.size() == producer_tv->domain()->contiguity().size());
+  Val* cur_contig_stride = GpuLower::current()->kernel()->oneVal();
+  for (const auto i : c10::irange(root_dom.size())) {
+    auto dim = root_dom.size() - i - 1;
+    if (root_dom[dim]->isReduction()) {
+      continue;
+    }
+
+    if (producer_tv->domain()->contiguity()[dim]) {
+      // If contig, used the stored stride which may be the previous
+      // dimensions stride * previous dimensions size
+      strides[dim] = cur_contig_stride;
+      // Prepare for the next dimension which may also be contiguous, multiply
+      // by extent of this dimension
+      auto root_dim_extent = getHaloExtentOfRootAxis(root_dom[dim]);
+      cur_contig_stride =
+          SimplifyingIrBuilder::mulExpr(cur_contig_stride, root_dim_extent);
+    } else {
+      // If non contiguous dimension, keep local stride information, set cur
+      // stride to local stride * local raw extent
+      auto root_dim_extent = getHaloExtentOfRootAxis(root_dom[dim]);
+      cur_contig_stride =
+          SimplifyingIrBuilder::mulExpr(strides[dim], root_dim_extent);
+    }
+  }
+
+  auto vectorize_shift =
+      loops.empty() ? nullptr : loops.back()->vectorize_shift();
+
+  // Global striding
+  std::vector<Val*> strided_inds(
+      root_dom.size(), GpuLower::current()->kernel()->zeroVal());
+  for (const auto i : c10::irange(root_dom.size())) {
+    Val* root_ind = root_indices.at(i);
+
+    if (root_ind->isZeroInt()) {
+      continue;
+    } else {
+      auto strided_ind = SimplifyingIrBuilder::mulExpr(root_ind, strides[i]);
+      if (i == root_dom.size() - 1 && vectorize_shift != nullptr) {
+        strided_inds[i] =
+            SimplifyingIrBuilder::addExpr(strided_ind, vectorize_shift);
+      } else {
+        strided_inds[i] = strided_ind;
+      }
+    }
+  }
+
+  return strided_inds;
+}
+
+#endif
 
 namespace {
 
@@ -1844,13 +1929,13 @@ Val* Index::getLinearLogicalIndex(
   return sumVals(getGlobalConsumerStridedIndices(consumer_tv, loops));
 }
 
-std::vector<Val*> Index::getPerDimLogicalIndex(
+std::vector<Val*> Index::getConsumerPerDimLogicalIndex(
     TensorView* consumer_tv,
     const std::vector<kir::ForLoop*>& loops) {
   auto guard = ir_utils::overrideContiguityGuard(consumer_tv, false);
   IndexFromIdGraph index_from_id_graph =
       getTensorIndexFromIdGraph(loops, consumer_tv);
-  return getRootIndices(consumer_tv, loops, index_from_id_graph);
+  return getConsumerRootIndices(consumer_tv, loops, index_from_id_graph);
 }
 
 std::vector<Val*> Index::getProducerPerDimLogicalIndex(
@@ -1911,7 +1996,7 @@ std::vector<Val*> Index::getStrides(const TensorView* tv) {
   return strides;
 }
 
-std::vector<Val*> Index::getRootIndices(
+std::vector<Val*> Index::getConsumerRootIndices(
     const TensorView* tv,
     const std::vector<kir::ForLoop*>& loops,
     const IndexFromIdGraph& index_from_id_graph) {
@@ -2098,7 +2183,7 @@ std::vector<Val*> Index::getGlobalConsumerStridedIndices(
   auto index_from_id_graph = getTensorIndexFromIdGraph(loops, consumer_tv);
   auto consumer_indexing = index_from_id_graph.index;
   auto strides = getStrides(consumer_tv);
-  auto root_inds = getRootIndices(consumer_tv, loops, index_from_id_graph);
+  auto root_inds = getConsumerRootIndices(consumer_tv, loops, index_from_id_graph);
 
   // Global striding
   auto vectorize_shift =
@@ -2370,8 +2455,9 @@ struct PredicateDomainInfo {
   // set is used to remove redundant predicates when gathering
   // unswitch predicates.
   std::unordered_set<IterDomain*> covered_ids;
-  // True if this predicate is for a non-divisible split
-  bool is_non_divisible_split = false;
+  // True if this predicate is for an intermediate domain. Examples
+  // include domains with non-divisible split and resized domains.
+  bool is_intermediate_domain = false;
 };
 
 // Find iteration domains in the history of a consumer to predicate comprised
@@ -2388,9 +2474,7 @@ std::vector<PredicateDomainInfo> getPredicateContigIds(
     const std::unordered_map<IterDomain*, Val*>& consumer_index_map) {
   const auto gpu_lower = GpuLower::current();
 
-  // TODO: What's the reason of predicating the root domain rather
-  // than the rfactor domain?
-  // const auto& consumer_root_domain = consumer_tv->getRootDomain();
+  // TODO: revisit
   const auto& consumer_root_domain =
       ir_utils::isReductionOp(consumer_tv->definition())
       ? consumer_tv->getRootDomain()
@@ -2492,7 +2576,9 @@ std::vector<PredicateDomainInfo> getNonDivisibleConsumerDomainsToPredicate(
   return pred_info_vec;
 }
 
-std::vector<PredicateDomainInfo> getExpandedDomainsToPredicate(
+// When resized, make sure the index at the IterDomain to resize is
+// within the valid range.
+std::vector<PredicateDomainInfo> getResizedDomainsToPredicate(
     TensorView* consumer_tv) {
   std::vector<PredicateDomainInfo> pred_info_vec;
 
@@ -2503,18 +2589,17 @@ std::vector<PredicateDomainInfo> getExpandedDomainsToPredicate(
       {consumer_tv->domain()->domain().begin(),
        consumer_tv->domain()->domain().end()});
 
-  for (auto expand : ir_utils::filterByType<Resize>(exprs)) {
+  for (auto resize : ir_utils::filterByType<Resize>(exprs)) {
     // If the input is a root domain, it is already predicated by the
     // normal predicate logic
     if (std::find(
             consumer_tv->getRootDomain().begin(),
             consumer_tv->getRootDomain().end(),
-            expand->in()) != consumer_tv->getRootDomain().end()) {
+            resize->in()) != consumer_tv->getRootDomain().end()) {
       continue;
     }
-    // TODO: This isn't a predicate for a non-divisible split, but the
-    // last argument to the PredicateDomainInfo ctor should be true.
-    PredicateDomainInfo info{expand->in(), {expand->in()}, true};
+
+    PredicateDomainInfo info{resize->in(), {resize->in()}, true};
     pred_info_vec.emplace_back(info);
   }
 
@@ -2716,7 +2801,7 @@ std::pair<Val*, Val*> getStartAndStopOffsetsForGather(
 std::pair<Val*, Val*> getStartAndStopLimitOffsets(
     IterDomain* consumer_id,
     bool padding_predicate,
-    bool non_divisible_pred) {
+    bool intemediate_domain_pred) {
   const auto gpu_lower = GpuLower::current();
 
   TORCH_INTERNAL_ASSERT(consumer_id != nullptr);
@@ -2724,7 +2809,7 @@ std::pair<Val*, Val*> getStartAndStopLimitOffsets(
   Val* start_limit = consumer_id->start();
   Val* stop_limit = SimplifyingIrBuilder::negExpr(consumer_id->stopOffset());
 
-  if (!non_divisible_pred) {
+  if (!intemediate_domain_pred) {
     AxisHaloInfo halo_info =
         gpu_lower->haloInfo()->getRootAxisInfo(consumer_id);
 
@@ -2768,11 +2853,11 @@ std::pair<Val*, Val*> getStartAndStopOffsets(
     const std::unordered_map<IterDomain*, Val*>& consumer_stop_index_map,
     bool padding_predicate,
     bool unswitch,
-    bool non_divisible_pred) {
+    bool intermediate_domain_pred) {
   // By default, the offsets for the start and stop predicates are
   // just zero. All halo-related adjustments are done at root domains,
   // so consumer_id is not a root domain, no adjustment is required.
-  if (consumer_id->definition() != nullptr && !non_divisible_pred) {
+  if (consumer_id->definition() != nullptr && !intermediate_domain_pred) {
     return {
         GpuLower::current()->kernel()->zeroVal(),
         GpuLower::current()->kernel()->zeroVal()};
@@ -2784,7 +2869,7 @@ std::pair<Val*, Val*> getStartAndStopOffsets(
   Val* stop_offset = GpuLower::current()->kernel()->zeroVal();
 
   // These adjustments are not required when predicating non-divisible splits
-  if (!non_divisible_pred) {
+  if (!intermediate_domain_pred) {
     if (consumer_def->isA<ShiftOp>()) {
       std::tie(start_offset, stop_offset) = getStartAndStopOffsetsForShift(
           consumer_tv, consumer_id, padding_predicate);
@@ -2820,7 +2905,7 @@ std::pair<Val*, Val*> getStartAndStopOffsets(
 
   // Get the boundaries of two ends
   auto limits = getStartAndStopLimitOffsets(
-      consumer_id, padding_predicate, non_divisible_pred);
+      consumer_id, padding_predicate, intermediate_domain_pred);
 
   // At this point, we have everything to create both start and stop
   // predicates as:
@@ -2838,26 +2923,6 @@ std::pair<Val*, Val*> getStartAndStopOffsets(
   stop_offset = SimplifyingIrBuilder::subExpr(stop_offset, limits.second);
 
   return {start_offset, stop_offset};
-}
-
-// A partial value of a start offset is returned if determined to be
-// safe. Nullptr is returned if it can be omitted completely.
-Val* simplifyStartOffset(Val* start_offset) {
-  // Start predicate can be omitted when start_offset >= 0.
-  auto offset_val = start_offset->as<Int>()->value();
-  if (offset_val.has_value() && offset_val.value() >= 0) {
-    // return nullptr;
-  }
-
-  // start_offset may look like min(0, window_index - pad). Then, can
-  // remove min and leave the rhs only.
-  auto def = dynamic_cast<BinaryOp*>(start_offset->definition());
-  if (def != nullptr && def->getBinaryOpType() == BinaryOpType::Min &&
-      def->lhs()->isZeroInt()) {
-    return def->rhs();
-  }
-
-  return start_offset;
 }
 
 bool canOmitStopPredicate(
@@ -2996,7 +3061,7 @@ std::vector<RootPredicateInfo> Index::getReferenceRootPredicates(
       non_divisible_splits.end());
 
   auto expanded_domains_to_predicate =
-      getExpandedDomainsToPredicate(consumer_tv);
+      getResizedDomainsToPredicate(consumer_tv);
   contig_id_infos.insert(
       contig_id_infos.end(),
       expanded_domains_to_predicate.begin(),
@@ -3049,7 +3114,7 @@ std::vector<RootPredicateInfo> Index::getReferenceRootPredicates(
         consumer_stop_index_map,
         shift_padding,
         unswitch_or_vec_loop != nullptr,
-        contig_id_entry.is_non_divisible_split);
+        contig_id_entry.is_intermediate_domain);
 
     auto stop_index = consumer_stop_indexing_it->second;
     auto start_index = consumer_start_index_map.at(contig_id);
@@ -3075,18 +3140,13 @@ std::vector<RootPredicateInfo> Index::getReferenceRootPredicates(
 
     // Build predicates for start positions as:
     //   start_index + start_offset >= 0
-    auto start_offset = simplifyStartOffset(info.start_offset_);
-    if (start_offset == nullptr) {
-      info.start_predicate_ = GpuLower::current()->kernel()->trueVal();
-    } else {
-      auto offsetted_start_index =
-          SimplifyingIrBuilder::addExpr(start_index, start_offset);
-      auto start_pred =
-          SimplifyingIrBuilder::geExpr(
-              offsetted_start_index, GpuLower::current()->kernel()->zeroVal())
-              ->as<Bool>();
-      info.start_predicate_ = start_pred;
-    }
+    auto offsetted_start_index =
+        SimplifyingIrBuilder::addExpr(start_index, info.start_offset_);
+    auto start_pred =
+        SimplifyingIrBuilder::geExpr(
+            offsetted_start_index, GpuLower::current()->kernel()->zeroVal())
+        ->as<Bool>();
+    info.start_predicate_ = start_pred;
 
     // Build predicates for stop positions as:
     //   stop_index + stop_offset < IterDomain::extent
@@ -3135,7 +3195,7 @@ Val* Index::eye(
     TensorView* consumer_tv,
     const std::vector<kir::ForLoop*>& loops,
     DataType dtype) {
-  auto indices = Index::getPerDimLogicalIndex(consumer_tv, loops);
+  auto indices = Index::getConsumerPerDimLogicalIndex(consumer_tv, loops);
   TORCH_INTERNAL_ASSERT(indices.size() == 2);
   auto result = castOp(dtype, eq(indices[0], indices[1]));
   GpuLower::current()->commonScalarMap().hoistScalar(result, loops);

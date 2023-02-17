@@ -319,11 +319,12 @@ class Index {
   static std::vector<Val*> getStrides(const TensorView* tv);
 
   // get the root indices of a tensor used for the index lowering
-  static std::vector<Val*> getRootIndices(
+  static std::vector<Val*> getConsumerRootIndices(
       const TensorView* tv,
       const std::vector<kir::ForLoop*>& loops,
       const IndexFromIdGraph& index_from_id_graph);
 
+  // get the root indices of a producer tensor
   static std::vector<Val*> getProducerRootIndices(
       TensorView* producer,
       const TensorView* consumer,
@@ -397,10 +398,12 @@ class Index {
   //! root domain of a consumer tensor. The returned index is intended
   //! to be used for the computation of some tensor factories, such as:
   //! eye
-  static std::vector<Val*> getPerDimLogicalIndex(
+  static std::vector<Val*> getConsumerPerDimLogicalIndex(
       TensorView* consumer_tv,
       const std::vector<kir::ForLoop*>& loops);
 
+  //! Returns a vector of logical indices mapped onto the (rfactor)
+  //! root domain of a producer tensor.
   static std::vector<Val*> getProducerPerDimLogicalIndex(
       TensorView* producer_tv,
       const TensorView* consumer_tv,
