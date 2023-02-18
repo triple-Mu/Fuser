@@ -11,6 +11,7 @@
 
 namespace nvfuser {
 
+// Simple pad test
 TEST_F(NVFuserTest, FusionPad1_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
@@ -22,9 +23,6 @@ TEST_F(NVFuserTest, FusionPad1_CUDA) {
 
   auto tv1 = pad(tv0, {IrBuilder::create<Int>(1), IrBuilder::create<Int>(1)});
   fusion.addOutput(tv1);
-
-  fusion.printMath();
-  fusion.printKernel();
 
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
@@ -41,6 +39,7 @@ TEST_F(NVFuserTest, FusionPad1_CUDA) {
   TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
+// pad + split
 TEST_F(NVFuserTest, FusionPad2_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
@@ -55,9 +54,6 @@ TEST_F(NVFuserTest, FusionPad2_CUDA) {
 
   tv1->split(0, 4);
 
-  fusion.printMath();
-  fusion.printKernel();
-
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
 
@@ -73,6 +69,7 @@ TEST_F(NVFuserTest, FusionPad2_CUDA) {
   TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
+// pad, merge + split, inlineMost
 TEST_F(NVFuserTest, FusionPad3_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
@@ -81,10 +78,8 @@ TEST_F(NVFuserTest, FusionPad3_CUDA) {
   std::vector<int64_t> padded_shape({9, 11 + 2});
 
   auto tv0 = makeSymbolicTensor(2);
-  // auto tv0 = makeConcreteTensor(shape);
   fusion.addInput(tv0);
   auto tv1 = makeSymbolicTensor(2);
-  // auto tv1 = makeConcreteTensor(padded_shape);
   fusion.addInput(tv1);
 
   auto tv2 = set(tv0);
@@ -92,24 +87,13 @@ TEST_F(NVFuserTest, FusionPad3_CUDA) {
   auto tv4 = add(tv3, tv1);
   fusion.addOutput(tv4);
 
-  fusion.printMath();
-
-  std::cerr << "Padded axes: "
-            << tv3->definition()->as<PadOp>()->getPaddedAxes() << std::endl;
-
-#if 1
   tv4->merge(0);
   tv4->split(0, 32);
 
   TransformPropagator propagator(tv4);
   MaxRootDomainInfoSpanningTree(tv4).traverse(&propagator);
-#endif
 
   inlineMost();
-
-  fusion.printMath();
-  fusion.print();
-  fusion.printKernel();
 
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
@@ -125,16 +109,10 @@ TEST_F(NVFuserTest, FusionPad3_CUDA) {
   auto t3 = at::pad(t0, {1, 1});
   auto ref = t3 + t1;
 
-#if 0
-  std::cerr << "t0: " << t0 << std::endl;
-  std::cerr << "t1: " << t1 << std::endl;
-  std::cerr << "ref: " << ref << std::endl;
-  std::cerr << "cg: " << cg_outputs[0] << std::endl;
-#endif
-
   testValidate(&fusion, cg_outputs, aten_inputs, {ref}, __LINE__, __FILE__);
 }
 
+// pad + parallelization
 TEST_F(NVFuserTest, FusionPad4_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
@@ -148,9 +126,6 @@ TEST_F(NVFuserTest, FusionPad4_CUDA) {
   fusion.addOutput(tv1);
 
   tv1->axis(0)->parallelize(ParallelType::TIDx);
-
-  fusion.printMath();
-  fusion.printKernel();
 
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
@@ -167,6 +142,7 @@ TEST_F(NVFuserTest, FusionPad4_CUDA) {
   TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
+// pad + parallelization + RAW sync
 TEST_F(NVFuserTest, FusionPad5_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
@@ -185,9 +161,6 @@ TEST_F(NVFuserTest, FusionPad5_CUDA) {
 
   tv1->setMemoryType(MemoryType::Shared);
 
-  fusion.printMath();
-  fusion.printKernel();
-
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
 
@@ -203,6 +176,7 @@ TEST_F(NVFuserTest, FusionPad5_CUDA) {
   TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
+// pad + merge + split parallelization
 TEST_F(NVFuserTest, FusionPad6_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
@@ -220,8 +194,6 @@ TEST_F(NVFuserTest, FusionPad6_CUDA) {
   auto tv4 = add(tv3, tv1);
   fusion.addOutput(tv4);
 
-  fusion.printMath();
-
   tv4->merge(0);
   tv4->split(0, 32);
 
@@ -232,10 +204,6 @@ TEST_F(NVFuserTest, FusionPad6_CUDA) {
 
   tv4->axis(0)->parallelize(ParallelType::BIDx);
   tv4->axis(1)->parallelize(ParallelType::TIDx);
-
-  fusion.printMath();
-  fusion.print();
-  fusion.printKernel();
 
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
@@ -255,6 +223,7 @@ TEST_F(NVFuserTest, FusionPad6_CUDA) {
   testValidate(&fusion, cg_outputs, aten_inputs, {ref}, __LINE__, __FILE__);
 }
 
+// Trivial cat
 TEST_F(NVFuserTest, FusionCat1_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
@@ -271,9 +240,6 @@ TEST_F(NVFuserTest, FusionCat1_CUDA) {
   auto tv2 = cat({tv0, tv1}, 0);
   fusion.addOutput(tv2);
 
-  fusion.printMath();
-  fusion.printKernel();
-
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
 
@@ -287,14 +253,10 @@ TEST_F(NVFuserTest, FusionCat1_CUDA) {
 
   auto ref = at::cat({t0, t1}, 0);
 
-  std::cout << "In0: " << t0 << std::endl;
-  std::cout << "In1: " << t1 << std::endl;
-  std::cout << "Ref: " << ref << std::endl;
-  std::cout << "CG: " << cg_outputs[0] << std::endl;
-
   TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
+// Trivial 2D inner cat
 TEST_F(NVFuserTest, FusionCat2_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
@@ -311,9 +273,6 @@ TEST_F(NVFuserTest, FusionCat2_CUDA) {
   auto tv2 = cat({tv0, tv1}, 0);
   fusion.addOutput(tv2);
 
-  fusion.printMath();
-  fusion.printKernel();
-
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
 
@@ -330,6 +289,7 @@ TEST_F(NVFuserTest, FusionCat2_CUDA) {
   TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
+// Trivial 2D outer cat
 TEST_F(NVFuserTest, FusionCat3_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
@@ -354,9 +314,6 @@ TEST_F(NVFuserTest, FusionCat3_CUDA) {
 
   inlineMost();
 
-  fusion.printMath();
-  fusion.printKernel();
-
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
 
@@ -373,6 +330,7 @@ TEST_F(NVFuserTest, FusionCat3_CUDA) {
   TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
+// Cat + merge + split + parallelization + inlineMost
 TEST_F(NVFuserTest, FusionCat4_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
@@ -400,9 +358,6 @@ TEST_F(NVFuserTest, FusionCat4_CUDA) {
 
   inlineMost();
 
-  fusion.printMath();
-  fusion.printKernel();
-
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
 
@@ -419,6 +374,7 @@ TEST_F(NVFuserTest, FusionCat4_CUDA) {
   TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
+// Cat + arith op
 TEST_F(NVFuserTest, FusionCat5_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
@@ -446,9 +402,6 @@ TEST_F(NVFuserTest, FusionCat5_CUDA) {
   tv4->axis(1)->parallelize(ParallelType::TIDx);
   scheduler_utils::parallelizeAllLike(tv4);
 
-  fusion.printMath();
-  fusion.printKernel();
-
   std::vector<int64_t> shape0({11, 12});
   std::vector<int64_t> shape1({shape0[0], 13});
   std::vector<int64_t> shape2({shape0[0], shape0[1] + shape1[1]});
@@ -470,6 +423,7 @@ TEST_F(NVFuserTest, FusionCat5_CUDA) {
   TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
+// Cat 3 tensors
 TEST_F(NVFuserTest, FusionCat6_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
@@ -499,9 +453,6 @@ TEST_F(NVFuserTest, FusionCat6_CUDA) {
   tv3->axis(1)->parallelize(ParallelType::TIDx);
   scheduler_utils::parallelizeAllLike(tv3);
 
-  fusion.printMath();
-  fusion.printKernel();
-
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
 
@@ -519,6 +470,7 @@ TEST_F(NVFuserTest, FusionCat6_CUDA) {
   TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
+// Cat many tensors
 TEST_F(NVFuserTest, FusionCat7_CUDA) {
   int num_tensors_to_concat = 10;
 
@@ -537,8 +489,6 @@ TEST_F(NVFuserTest, FusionCat7_CUDA) {
     auto concat_tv = cat(inputs, concat_dim);
     fusion.addOutput(concat_tv);
 
-    fusion.printMath();
-
     concat_tv->merge(0);
     concat_tv->split(0, 128);
 
@@ -550,9 +500,6 @@ TEST_F(NVFuserTest, FusionCat7_CUDA) {
     concat_tv->axis(0)->parallelize(ParallelType::BIDx);
     concat_tv->axis(1)->parallelize(ParallelType::TIDx);
     scheduler_utils::parallelizeAllLike(concat_tv);
-
-    fusion.printMath();
-    fusion.printKernel();
 
     auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
     at::manual_seed(0);
@@ -578,6 +525,7 @@ TEST_F(NVFuserTest, FusionCat7_CUDA) {
   }
 }
 
+// Trivial slice
 TEST_F(NVFuserTest, FusionSlice1_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
@@ -592,10 +540,6 @@ TEST_F(NVFuserTest, FusionSlice1_CUDA) {
       {{IrBuilder::create<Int>(1),
         sub(tv0->axis(0)->extent(), IrBuilder::create<Int>(1))}});
   fusion.addOutput(tv1);
-
-  fusion.printMath();
-
-  fusion.printKernel();
 
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
@@ -612,6 +556,7 @@ TEST_F(NVFuserTest, FusionSlice1_CUDA) {
   TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
+// Split a tensor to half and add them up
 TEST_F(NVFuserTest, FusionSlice2_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
@@ -620,25 +565,20 @@ TEST_F(NVFuserTest, FusionSlice2_CUDA) {
 
   TORCH_CHECK(shape[1] % 2 == 0);
 
-  // auto tv0 = makeSymbolicTensor(2);
   auto tv0 = makeConcreteTensor(shape);
   fusion.addInput(tv0);
 
-  // This results in float
-  // auto mid_point = div(tv0->axis(1)->extent(), IrBuilder::create<Int>(2));
+  // This doesn't work as it results in float
+  // auto mid_point = div(tv0->axis(1)->extent(),
+  // IrBuilder::create<Int>(2));
+
   auto mid_point =
       IrBuilder::divExpr(tv0->axis(1)->extent(), IrBuilder::create<Int>(2));
 
-  std::cerr << "Mid point: " << mid_point->toString()
-            << ", type: " << mid_point->getDataType().value() << std::endl;
   auto tv1 = slice(tv0, {Slice(), {IrBuilder::create<Int>(0), mid_point}});
   auto tv2 = slice(tv0, {Slice(), {mid_point}});
   auto tv3 = add(tv1, tv2);
   fusion.addOutput(tv3);
-
-  fusion.printMath();
-
-  fusion.printKernel();
 
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
@@ -661,6 +601,7 @@ TEST_F(NVFuserTest, FusionSlice2_CUDA) {
   TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
+// "Trivial" slice is converted to Set
 TEST_F(NVFuserTest, FusionSlice3_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
@@ -674,8 +615,6 @@ TEST_F(NVFuserTest, FusionSlice3_CUDA) {
   auto tv3 = add(tv1, tv2);
   fusion.addOutput(tv3);
 
-  fusion.printMath();
-
   TORCH_CHECK(
       tv1->definition()->isA<UnaryOp>() &&
       tv1->definition()->as<UnaryOp>()->getUnaryOpType() == UnaryOpType::Set);
@@ -684,14 +623,14 @@ TEST_F(NVFuserTest, FusionSlice3_CUDA) {
       tv2->definition()->as<UnaryOp>()->getUnaryOpType() == UnaryOpType::Set);
 }
 
+// Partition an input, reduce each and concatenate them
 TEST_F(NVFuserTest, FusionSlice4_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
   std::vector<int64_t> shape({5, 100});
 
-  // auto tv0 = makeSymbolicTensor(2);
-  auto tv0 = makeConcreteTensor(shape);
+  auto tv0 = makeSymbolicTensor(2);
   fusion.addInput(tv0);
 
   // Consider a fusion of:
@@ -712,8 +651,6 @@ TEST_F(NVFuserTest, FusionSlice4_CUDA) {
   auto tv6 = sum(tv4, {1});
   auto tv7 = cat({tv5, tv6}, 0);
   fusion.addOutput(tv7);
-
-  fusion.printMath();
 
   // Schedule the two reductions separately
   tv5->split(-1, 32);
@@ -749,12 +686,7 @@ TEST_F(NVFuserTest, FusionSlice4_CUDA) {
   }
 
   // Use just one block to concat the two results
-  // This doesn't work due to thread predicates (bug?)
-  // tv7->axis(0)->parallelize(ParallelType::TIDx);
-  tv7->axis(0)->parallelize(ParallelType::BIDx);
-
-  fusion.printMath();
-  fusion.printKernel();
+  tv7->axis(0)->parallelize(ParallelType::TIDx);
 
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
