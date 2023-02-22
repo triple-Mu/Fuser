@@ -938,7 +938,8 @@ std::vector<TensorView*> getViewTVs(Fusion* fusion) {
   for (auto producer_tv : ir_utils::filterByType<TensorView>(fusion_vals)) {
     auto consumer_tvs = ir_utils::consumerTvsOf(producer_tv);
     for (auto consumer_tv : consumer_tvs) {
-      if (consumer_tv->isDefinitionType<ViewOp>()) {
+      if (consumer_tv->isDefinitionType<ViewOp>() ||
+          consumer_tv->isDefinitionType<PadOp>()) {
         view_tvs.push_back(consumer_tv);
       }
     }
@@ -1055,6 +1056,11 @@ IterDomain* projectIdToRoot(
           projected_id = split->in();
         }
       }
+    } else if (expr->isA<Resize>()) {
+      auto resize = expr->as<Resize>();
+      if (resize->out() == projected_id) {
+        projected_id = resize->in();
+      }
     } else {
       TORCH_INTERNAL_ASSERT(
           false, "Didn't recognize the iterdomain expression: ", expr);
@@ -1108,6 +1114,11 @@ IterDomain* projectIdToRFactor(
       auto split = expr->as<Split>();
       if (split->in() == projected_id) {
         projected_id = split->inner();
+      }
+    } else if (expr->isA<Resize>()) {
+      auto resize = expr->as<Resize>();
+      if (resize->in() == projected_id) {
+        projected_id = resize->out();
       }
     } else {
       TORCH_INTERNAL_ASSERT(
@@ -2113,6 +2124,9 @@ DisjointSets<IterDomain*> disjointViewSets(Fusion* fusion) {
         auto split = expr->as<Split>();
         disjoint_view_ids.mapEntries(split->in(), split->inner());
         disjoint_view_ids.mapEntries(split->in(), split->outer());
+      } else if (expr->isA<Resize>()) {
+        auto resize = expr->as<Resize>();
+        disjoint_view_ids.mapEntries(resize->in(), resize->out());
       } else {
         TORCH_INTERNAL_ASSERT(
             false, "Expression type: ", expr->toString(), " not supported.");
