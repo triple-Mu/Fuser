@@ -1,9 +1,11 @@
 #include <gmock/gmock-matchers.h>
 #include <gtest/gtest.h>
 
+#include <executor.h>
 #include <executor_utils.h>
 #include <fusion.h>
 #include <inlining.h>
+#include <kernel_cache.h>
 #include <ops/all_ops.h>
 #include <scheduler/utils.h>
 #include <test/test_gpu_validator.h>
@@ -221,6 +223,100 @@ TEST_F(NVFuserTest, FusionPad6_CUDA) {
   auto ref = t3 + t1;
 
   testValidate(&fusion, cg_outputs, aten_inputs, {ref}, __LINE__, __FILE__);
+}
+
+// pad + unswitch. Having different extents in an unswitched loop nest
+// needs a special care (see UnrollPass::canOmitElseClause)
+TEST_F(NVFuserTest, FusionPad7_CUDA) {
+  Fusion fusion;
+  FusionGuard fg(&fusion);
+
+  std::vector<int64_t> shape({9, 11});
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+
+  auto tv1 = set(tv0);
+  auto tv2 = pad(tv1, {IrBuilder::create<Int>(1), IrBuilder::create<Int>(1)});
+  auto tv3 = set(tv2);
+  fusion.addOutput(tv3);
+
+  tv3->split(0, 1);
+  tv3->split(-1, 4);
+  tv3->reorder({{1, 2}});
+
+  TransformPropagator propagator(tv3);
+  MaxRootDomainInfoSpanningTree(tv3).traverse(&propagator);
+
+  inlineMost();
+
+  tv3->axis(-1)->parallelize(ParallelType::TIDx);
+  tv3->axis(-2)->parallelize(ParallelType::Unswitch);
+
+  scheduler_utils::parallelizeAllLike(tv3);
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape, options);
+  std::vector<c10::IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  auto ref = at::pad(t0, {1, 1});
+
+  testValidate(&fusion, cg_outputs, aten_inputs, {ref}, __LINE__, __FILE__);
+}
+
+TEST_F(NVFuserTest, FusionPadScheduler1_CUDA) {
+  auto fusion = std::make_unique<Fusion>();
+  FusionGuard fg(fusion.get());
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion->addInput(tv0);
+
+  auto tv1 = pad(tv0, {IrBuilder::create<Int>(1), IrBuilder::create<Int>(1)});
+  fusion->addOutput(tv1);
+
+  std::vector<int64_t> shape({99, 111});
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape, options);
+  std::vector<c10::IValue> aten_inputs({t0});
+
+  FusionExecutorCache executor_cache(std::move(fusion));
+  auto cg_outputs = executor_cache.runFusionWithInputs(aten_inputs);
+
+  auto ref = at::pad(t0, {1, 1});
+
+  TORCH_CHECK(ref.equal(cg_outputs[0]));
+}
+
+TEST_F(NVFuserTest, FusionPadScheduler2_CUDA) {
+  auto fusion = std::make_unique<Fusion>();
+  FusionGuard fg(fusion.get());
+
+  auto tv0 = makeSymbolicTensor(1);
+  fusion->addInput(tv0);
+
+  auto tv1 = set(tv0);
+  auto tv2 = pad(tv1, {IrBuilder::create<Int>(1), IrBuilder::create<Int>(1)});
+  fusion->addOutput(tv2);
+
+  std::vector<int64_t> shape({99});
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape, options);
+  std::vector<c10::IValue> aten_inputs({t0});
+
+  FusionExecutorCache executor_cache(std::move(fusion));
+  auto outputs = executor_cache.runFusionWithInputs(aten_inputs);
 }
 
 // Trivial cat
