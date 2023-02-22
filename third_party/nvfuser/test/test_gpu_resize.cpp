@@ -163,6 +163,16 @@ TEST_F(NVFuserTest, FusionPad5_CUDA) {
 
   tv1->setMemoryType(MemoryType::Shared);
 
+  GpuLower gpulw(&fusion);
+  auto all_lowered_exprs = KernelExprVisitor::getAllExprs(gpulw.kernel());
+  TORCH_CHECK(
+      std::find_if(
+          all_lowered_exprs.begin(),
+          all_lowered_exprs.end(),
+          [](Expr* expr) { return expr->isA<kir::BlockSync>(); }) !=
+          all_lowered_exprs.end(),
+      "Block sync not found");
+
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
 
@@ -297,26 +307,43 @@ TEST_F(NVFuserTest, FusionPadScheduler1_CUDA) {
 }
 
 TEST_F(NVFuserTest, FusionPadScheduler2_CUDA) {
-  auto fusion = std::make_unique<Fusion>();
-  FusionGuard fg(fusion.get());
+  auto fusion_ptr = std::make_unique<Fusion>();
+  auto& fusion = *fusion_ptr;
+  FusionGuard fg(fusion_ptr.get());
 
-  auto tv0 = makeSymbolicTensor(1);
-  fusion->addInput(tv0);
+  std::vector<int64_t> shape({9, 11});
+  std::vector<int64_t> padded_shape({9, 11 + 2});
 
-  auto tv1 = set(tv0);
-  auto tv2 = pad(tv1, {IrBuilder::create<Int>(1), IrBuilder::create<Int>(1)});
-  fusion->addOutput(tv2);
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+  auto tv1 = makeSymbolicTensor(2);
+  fusion.addInput(tv1);
 
-  std::vector<int64_t> shape({99});
+  auto tv2 = set(tv0);
+  auto tv3 = pad(tv2, {IrBuilder::create<Int>(1), IrBuilder::create<Int>(1)});
+  auto tv4 = add(tv3, tv1);
+  fusion.addOutput(tv4);
 
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
 
   auto t0 = at::randn(shape, options);
-  std::vector<c10::IValue> aten_inputs({t0});
+  auto t1 = at::randn(padded_shape, options);
+  std::vector<c10::IValue> aten_inputs({t0, t1});
 
-  FusionExecutorCache executor_cache(std::move(fusion));
-  auto outputs = executor_cache.runFusionWithInputs(aten_inputs);
+  FusionExecutorCache executor_cache(std::move(fusion_ptr));
+  auto cg_outputs = executor_cache.runFusionWithInputs(aten_inputs);
+
+  auto t3 = at::pad(t0, {1, 1});
+  auto ref = t3 + t1;
+
+  testValidate(
+      executor_cache.fusion(),
+      cg_outputs,
+      aten_inputs,
+      {ref},
+      __LINE__,
+      __FILE__);
 }
 
 // Trivial cat
@@ -516,7 +543,7 @@ TEST_F(NVFuserTest, FusionCat5_CUDA) {
 
   auto ref = at::cat({t0, t1}, 1) + t2;
 
-  TORCH_CHECK(ref.equal(cg_outputs[0]));
+  testValidate(&fusion, cg_outputs, aten_inputs, {ref}, __LINE__, __FILE__);
 }
 
 // Cat 3 tensors
@@ -619,6 +646,118 @@ TEST_F(NVFuserTest, FusionCat7_CUDA) {
 
     TORCH_CHECK(ref.equal(cg_outputs[0]));
   }
+}
+
+// Auto scheduled version of Cat1
+TEST_F(NVFuserTest, FusionCatScheduler1_CUDA) {
+  auto fusion_ptr = std::make_unique<Fusion>();
+  auto& fusion = *fusion_ptr;
+  FusionGuard fg(fusion_ptr.get());
+
+  auto tv0 = makeSymbolicTensor(1);
+  fusion.addInput(tv0);
+
+  auto tv1 = makeSymbolicTensor(1);
+  fusion.addInput(tv1);
+
+  auto tv2 = cat({tv0, tv1}, 0);
+  fusion.addOutput(tv2);
+
+  std::vector<int64_t> shape0({2});
+  std::vector<int64_t> shape1({3});
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape0, options);
+  auto t1 = at::randn(shape1, options);
+  std::vector<c10::IValue> aten_inputs({t0, t1});
+
+  FusionExecutorCache executor_cache(std::move(fusion_ptr));
+  auto cg_outputs = executor_cache.runFusionWithInputs(aten_inputs);
+
+  auto ref = at::cat({t0, t1}, 0);
+
+  TORCH_CHECK(ref.equal(cg_outputs[0]));
+}
+
+// Auto scheduled version of Cat5
+TEST_F(NVFuserTest, FusionCatScheduler2_CUDA) {
+  auto fusion_ptr = std::make_unique<Fusion>();
+  auto& fusion = *fusion_ptr;
+  FusionGuard fg(fusion_ptr.get());
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+  auto tv1 = makeSymbolicTensor(2);
+  fusion.addInput(tv1);
+  auto tv2 = makeSymbolicTensor(2);
+  fusion.addInput(tv2);
+
+  auto tv3 = cat({tv0, tv1}, 1);
+  auto tv4 = add(tv3, tv2);
+  fusion.addOutput(tv4);
+
+  std::vector<int64_t> shape0({11, 12});
+  std::vector<int64_t> shape1({shape0[0], 13});
+  std::vector<int64_t> shape2({shape0[0], shape0[1] + shape1[1]});
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape0, options);
+  auto t1 = at::randn(shape1, options);
+  auto t2 = at::randn(shape2, options);
+  std::vector<c10::IValue> aten_inputs({t0, t1, t2});
+
+  FusionExecutorCache executor_cache(std::move(fusion_ptr));
+  auto cg_outputs = executor_cache.runFusionWithInputs(aten_inputs);
+
+  auto ref = at::cat({t0, t1}, 1) + t2;
+
+  testValidate(
+      executor_cache.fusion(),
+      cg_outputs,
+      aten_inputs,
+      {ref},
+      __LINE__,
+      __FILE__);
+}
+
+// Auto scheduled version of Cat6
+TEST_F(NVFuserTest, FusionCatScheduler3_CUDA) {
+  auto fusion_ptr = std::make_unique<Fusion>();
+  auto& fusion = *fusion_ptr;
+  FusionGuard fg(fusion_ptr.get());
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+  auto tv1 = makeSymbolicTensor(2);
+  fusion.addInput(tv1);
+  auto tv2 = makeSymbolicTensor(2);
+  fusion.addInput(tv2);
+
+  auto tv3 = cat({tv0, tv1, tv2}, 0);
+  fusion.addOutput(tv3);
+
+  std::vector<int64_t> shape0({2, 4});
+  std::vector<int64_t> shape1({5, 4});
+  std::vector<int64_t> shape2({3, 4});
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape0, options);
+  auto t1 = at::randn(shape1, options);
+  auto t2 = at::randn(shape2, options);
+  std::vector<c10::IValue> aten_inputs({t0, t1, t2});
+
+  FusionExecutorCache executor_cache(std::move(fusion_ptr));
+  auto cg_outputs = executor_cache.runFusionWithInputs(aten_inputs);
+
+  auto ref = at::cat({t0, t1, t2}, 0);
+
+  TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
 // Trivial slice
