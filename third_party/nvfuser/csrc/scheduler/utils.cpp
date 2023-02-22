@@ -939,12 +939,24 @@ std::vector<TensorView*> getViewTVs(Fusion* fusion) {
     auto consumer_tvs = ir_utils::consumerTvsOf(producer_tv);
     for (auto consumer_tv : consumer_tvs) {
       if (consumer_tv->isDefinitionType<ViewOp>() ||
-          consumer_tv->isDefinitionType<PadOp>()) {
+          consumer_tv->isDefinitionType<PadOp>() ||
+          consumer_tv->isDefinitionType<SliceOp>()) {
         view_tvs.push_back(consumer_tv);
       }
     }
   }
   return view_tvs;
+}
+
+std::vector<TensorView*> getTVsWithRFactor(Fusion* fusion) {
+  std::vector<TensorView*> tvs_with_rfactor;
+  auto fusion_vals = fusion->usedMathVals();
+  std::copy_if(
+      ir_utils::filterByType<TensorView>(fusion_vals).begin(),
+      ir_utils::filterByType<TensorView>(fusion_vals).end(),
+      std::back_inserter(tvs_with_rfactor),
+      [](TensorView* tv) { return tv->hasRFactor(); });
+  return tvs_with_rfactor;
 }
 
 // Reset inputs and outputs to global memory, everything else to local.

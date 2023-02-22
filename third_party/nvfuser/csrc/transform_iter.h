@@ -56,6 +56,7 @@ class TORCH_CUDA_CU_API ReplayTransformations : public IterVisitor {
   bool ran_replay = false; // Mark if replay has been run
   // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   bool replay_swizzle_ = false;
+  bool replay_resize_ = false;
   using IterVisitor::handle;
 
   // Transform dispatch
@@ -78,7 +79,9 @@ class TORCH_CUDA_CU_API ReplayTransformations : public IterVisitor {
       const std::vector<IterDomain*>& _target_domain,
       std::unordered_map<IterDomain*, IterDomain*> _id_map,
       bool _error_on_failure = true,
-
+      // Indicates if we want to replay resize ops on the replayed
+      //  tensor.
+      bool replay_resize = false,
       // Indicates if we want to replay swizzle ops on the replayed
       //  tensor.
       // The swizzle op will be replayed if true,

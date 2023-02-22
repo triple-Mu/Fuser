@@ -191,7 +191,11 @@ void ReplayTransformations::handle(Resize* exp) {
       leaf_ids_.find(mapped) != leaf_ids_.end(),
       "Transform traversal failed, modified a node but it was not a leaf node.");
 
-  auto out = IterDomain::resize(mapped, exp->leftExpand(), exp->rightExpand());
+  auto out = mapped;
+
+  if (replay_resize_) {
+    out = IterDomain::resize(mapped, exp->leftExpand(), exp->rightExpand());
+  }
 
   leaf_ids_.erase(mapped);
 
@@ -204,11 +208,13 @@ ReplayTransformations::ReplayTransformations(
     const std::vector<IterDomain*>& _target_domain,
     std::unordered_map<IterDomain*, IterDomain*> _id_map,
     bool _error_on_failure,
-    bool replay_swizzle)
+    bool replay_swizzle,
+    bool replay_resize)
     : target_domain_(_target_domain),
       id_map_(std::move(_id_map)),
       error_on_failure_(_error_on_failure),
-      replay_swizzle_(replay_swizzle) {
+      replay_swizzle_(replay_swizzle),
+      replay_resize_(replay_resize) {
   // Make sure id_map has all the inputs needed to replay target_domain
   auto inps = IterVisitor::getInputsTo(
       std::vector<Val*>(target_domain_.begin(), target_domain_.end()));

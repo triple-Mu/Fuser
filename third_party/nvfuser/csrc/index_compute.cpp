@@ -1459,7 +1459,8 @@ std::unordered_map<IterDomain*, IterDomain*> mapAllProducerDomainsToConsumer(
       producer_tv,
       consumer_tv,
       -1,
-      PairwiseRootDomainMap(producer_tv, consumer_tv));
+      PairwiseRootDomainMap(producer_tv, consumer_tv),
+      true);
 
   // Grab consumer domain entries and reverse replay map. TODO: Maybe
   // TransformReplay::replayPasC could return this map
@@ -1495,10 +1496,11 @@ std::vector<Val*> Index::getNonGlobalProducerStridedIndices(
   const auto gpu_lower = GpuLower::current();
 
   // Replay producer to look like consumer so we can index on producer since our
-  // loop nests look like consumer
+  // loop nests look like consumer. Resize ops can be replayed safely.
   auto pairwise_map = PairwiseRootDomainMap(producer_tv, consumer_tv);
   auto producer_replayed_as_consumer =
-      TransformReplay::replayPasC(producer_tv, consumer_tv, -1, pairwise_map)
+      TransformReplay::replayPasC(
+          producer_tv, consumer_tv, -1, pairwise_map, true)
           .first;
 
   ir_utils::TVDomainGuard domain_guard(
@@ -1832,7 +1834,8 @@ std::vector<Val*> Index::getProducerRootIndices(
   auto pairwise_map = PairwiseRootDomainMap(producer_tv, consumer_tv, false);
 
   TensorDomain* producerAsC =
-      TransformReplay::replayPasC(producer_tv, consumer_tv, -1, pairwise_map)
+      TransformReplay::replayPasC(
+          producer_tv, consumer_tv, -1, pairwise_map, true)
           .first;
 
   // Make the producer_tv look like consumer while performing indexing math

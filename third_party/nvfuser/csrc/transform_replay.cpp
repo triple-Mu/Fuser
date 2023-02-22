@@ -255,6 +255,7 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
     const TensorView* consumer,
     int consumer_pos,
     const RootDomainMap& root_map,
+    bool replay_resize,
     bool replay_swizzle) {
   FUSER_PERF_SCOPE("TransformReplay::replayPasC");
   if (producer == consumer) {
@@ -298,9 +299,17 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
     }
   }
 
+  // If this consumer is the only consumer of the producer, it's
+  // always safe to propagate resize
+  const auto sole_consumer = producer->uses().size() == 1;
+
   // Replay producer dimensions.
   ReplayTransformations replay_PasC(
-      target_consumer_ids, forwarded_replay_map, false, replay_swizzle);
+      target_consumer_ids,
+      forwarded_replay_map,
+      false,
+      replay_resize || sole_consumer,
+      replay_swizzle);
 
   auto producer_leaf_ids(replay_PasC.getUnorderedLeafIDs());
 
@@ -531,7 +540,7 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
 
   // Replay producer dimensions.
   ReplayTransformations replay_CasP(
-      target_producer_ids, forwarded_replay_map, replay_swizzle);
+      target_producer_ids, forwarded_replay_map, replay_swizzle, false);
 
   auto consumer_leaf_ids(replay_CasP.getUnorderedLeafIDs());
 
@@ -706,11 +715,17 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
     const TensorView* producer,
     const TensorView* consumer,
     int compute_at_axis,
+    bool replay_resize,
     bool replay_swizzle) {
   // Use the pairwise root map as a default mapper
   PairwiseRootDomainMap root_map(producer, consumer);
   return replayPasC(
-      producer, consumer, compute_at_axis, root_map, replay_swizzle);
+      producer,
+      consumer,
+      compute_at_axis,
+      root_map,
+      replay_resize,
+      replay_swizzle);
 }
 
 std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
