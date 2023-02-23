@@ -283,7 +283,8 @@ class TORCH_CUDA_CU_API BestEffortReplay {
       std::unordered_map<IterDomain*, IterDomain*> replay_forward_id_map = {},
       std::unordered_map<IterDomain*, IterDomain*> target_forward_id_map = {},
       bool skip_replay_swizzle = true,
-      bool skip_target_swizzle = true);
+      bool skip_target_swizzle = true,
+      bool forward_resize = false);
 
   // Return iter domain map from target_domain IDs to their "replayed"
   // replay_domain IDs. If not in map, was not replayed.
@@ -343,7 +344,8 @@ class TORCH_CUDA_CU_API BestEffortReplay {
       int consumer_compute_at_axis,
       const RootDomainMap& root_map,
       bool skip_producer_swizzle = true,
-      bool skip_consumer_swizzle = true);
+      bool skip_consumer_swizzle = true,
+      bool forward_resize = false);
 
   // Find the first position i where td1[i] is not the same as td2[i]. "Same"
   // means the DAG and input IDs to generate td1[i] and td2[i] are the same.

@@ -72,6 +72,9 @@ class TORCH_CUDA_CU_API IterDomainGraph {
   const DisjointSets<IterDomain*>& loopNodes() const {
     return loop_nodes_;
   }
+  const DisjointSets<IterDomain*>& permissiveResizeNodes() const {
+    return permissive_resize_nodes_;
+  }
 
   // Consumers and producers is not symmetric like the other sets
   const std::unordered_map<IterDomain*, VectorOfUniqueEntries<IterDomain*>>&
@@ -125,6 +128,7 @@ class TORCH_CUDA_CU_API IterDomainGraph {
   DisjointSets<IterDomain*> exact_nodes_;
   DisjointSets<IterDomain*> almost_exact_nodes_;
   DisjointSets<IterDomain*> loop_nodes_;
+  DisjointSets<IterDomain*> permissive_resize_nodes_;
 
   // Consumers and producers is not symmetric like the other sets
   std::unordered_map<IterDomain*, VectorOfUniqueEntries<IterDomain*>>

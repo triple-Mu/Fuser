@@ -910,6 +910,11 @@ IndexFromIdGraph getTensorIndexFromIdGraph(
       GpuLower::current()->concretizedBroadcastDomains(),
       p2c_map);
 
+  if (index_producer) {
+    std::cerr << "updating indexing for producer: " << producer_tv->toString()
+              << std::endl;
+  }
+
   auto target_indexing = indexing.updateIndexCompute(
       target_tv->domain(), index_update_map, contig_finder);
 
@@ -1267,9 +1272,27 @@ namespace {
 //!  the vector ids by permissive compute at map.
 bool isPermissivelyMappedWithAny(IterDomain* id, const std::vector<Val*>& ids) {
   return std::any_of(ids.begin(), ids.end(), [&](Val* val) {
-    return val->isA<IterDomain>() &&
-        GpuLower::current()->caMap()->areMapped(
-            id, val->as<IterDomain>(), IdMappingMode::PERMISSIVE);
+    if (!(val->isA<IterDomain>() &&
+          GpuLower::current()->caMap()->areMapped(
+              id, val->as<IterDomain>(), IdMappingMode::PERMISSIVE))) {
+      return false;
+    }
+    // When id is an input to resize, make sure the resize argumens
+    // are compatible. This is important when, for example, a tensor
+    // is padded two times differently but to the same shape, and the
+    // pad outputs are exactly mapped. In such a case, there're two
+    // paths from the post rfactor ID to the original input ID.
+    if (auto id_resize = dynamic_cast<Resize*>(id->uses().at(0))) {
+      auto mapped_id_resize =
+          dynamic_cast<Resize*>(val->as<IterDomain>()->uses().at(0));
+      TORCH_INTERNAL_ASSERT(mapped_id_resize != nullptr);
+      if (!(id_resize->leftExpand()->sameAs(mapped_id_resize->leftExpand()) &&
+            id_resize->rightExpand()->sameAs(
+                mapped_id_resize->rightExpand()))) {
+        return false;
+      }
+    }
+    return true;
   });
 }
 
@@ -1362,14 +1385,24 @@ std::unordered_set<IterDomain*> buildLoopIndexingPreferredPath(
 // Get an rfactor IterDomain that is mapped with an IterDomain. If
 // multiple such IDs exist, select one whose input IDs are mapped with
 // the consumer IDs. This is to ensure the path from the leaf
-// IterDomains to the root matches with the consumer tensor.
+// IterDomains to the root matches with the consumer tensor. See
+// the FusionPad8 test for a concrete example.
 IterDomain* getRfactorIDToTraverse(
     IterDomain* id,
     const std::vector<Val*>& consumer_all_ids) {
   const auto& rfactor_ids =
       GpuLower::current()->caMap()->getViewRfactorDomainsOfIdGroup(
           id, IdMappingMode::PERMISSIVE);
+#if 0
+  std::cerr << "getRfactorIDToTraverse: " << id->toString() << ": "
+            << toDelimitedString(rfactor_ids.begin(), rfactor_ids.end())
+            << std::endl;
 
+  std::cerr << "consumer IDs: "
+            << toDelimitedString(
+                   consumer_all_ids.begin(), consumer_all_ids.end())
+            << std::endl;
+#endif
   if (rfactor_ids.empty()) {
     return nullptr;
   }
@@ -1385,9 +1418,17 @@ IterDomain* getRfactorIDToTraverse(
             rfactor_id_inputs.begin(),
             rfactor_id_inputs.end(),
             [&](IterDomain* rfactor_id_input) {
-              return isPermissivelyMappedWithAny(
+              auto b = isPermissivelyMappedWithAny(
                   rfactor_id_input, consumer_all_ids);
+#if 0
+              if (b) {
+                std::cerr << "input mapped: " << rfactor_id_input->toString()
+                          << std::endl;
+              }
+#endif
+              return b;
             })) {
+      // std::cerr << "Picked rf: " << rfactor_id->toString() << std::endl;
       return rfactor_id;
     }
   }

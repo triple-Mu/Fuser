@@ -213,6 +213,7 @@ void IterDomainGraph::mapThroughExpr(Expr* first, Expr* second, bool forward) {
   for (auto out_i : c10::irange(first_ids.size())) {
     exact_nodes_.mapEntries(first_ids[out_i], second_ids[out_i]);
     permissive_nodes_.mapEntries(first_ids[out_i], second_ids[out_i]);
+    permissive_resize_nodes_.mapEntries(first_ids[out_i], second_ids[out_i]);
   }
 }
 
@@ -418,6 +419,7 @@ void IterDomainGraph::build(Fusion* fusion) {
           auto id0 = *disjoint_set->begin();
           for (auto id1 : disjoint_set->vector()) {
             permissive_nodes_.mapEntries(id0, id1);
+            permissive_resize_nodes_.mapEntries(id0, id1);
             exact_nodes_.mapEntries(id0, id1);
             sibling_sets_.mapEntries(id0, id1);
           }
@@ -443,6 +445,11 @@ void IterDomainGraph::build(Fusion* fusion) {
         // that both broadcast and squeeze are handled correctly.
         const auto permissive_disjoint_sets =
             BestEffortReplay::replayPasC(p_tv, c_tv, -1, pairwise_map)
+                .getIterDomainEquivalence();
+
+        const auto permissive_resize_disjoint_sets =
+            BestEffortReplay::replayPasC(
+                p_tv, c_tv, -1, pairwise_map, true, true, true)
                 .getIterDomainEquivalence();
 
         // For exact mapings do not map any broadcast dimensions to
@@ -510,6 +517,17 @@ void IterDomainGraph::build(Fusion* fusion) {
                 }
               }
             }
+          }
+        }
+
+        for (auto& dset : permissive_resize_disjoint_sets.disjointSets()) {
+          auto& vec = dset->vector();
+          for (auto i : c10::irange(vec.size())) {
+            auto id1 = vec[i];
+            permissive_resize_nodes_.mapEntries(id1, vec[0]);
+
+            // TODO: is this necessary?
+            mapMaybeSwizzleOp(permissive_resize_nodes_, id1);
           }
         }
       }
@@ -661,31 +679,33 @@ void IterDomainGraph::build(Fusion* fusion) {
   }
 
   // Build almost exact map by forwarding through broadcast axes
-  almost_exact_nodes_ = exact_nodes_;
-  std::unordered_set<Expr*> visited;
-  auto all_elements = exact_nodes_.getAllElements();
-  for (auto entry : all_elements.vector()) {
-    if (entry->definition() == nullptr) {
-      continue;
-    }
-    auto def = entry->definition();
-    if (!visited.emplace(def).second) {
-      continue;
-    }
-    if (auto merge = dynamic_cast<Merge*>(def)) {
-      if (merge->inner()->extent()->isOneInt()) {
-        almost_exact_nodes_.mapEntries(merge->outer(), merge->out());
+  {
+    almost_exact_nodes_ = exact_nodes_;
+    std::unordered_set<Expr*> visited;
+    auto all_elements = exact_nodes_.getAllElements();
+    for (auto entry : all_elements.vector()) {
+      if (entry->definition() == nullptr) {
+        continue;
       }
-      if (merge->outer()->extent()->isOneInt()) {
-        almost_exact_nodes_.mapEntries(merge->inner(), merge->out());
+      auto def = entry->definition();
+      if (!visited.emplace(def).second) {
+        continue;
       }
-    } else if (auto split = dynamic_cast<Split*>(def)) {
-      if (split->factor()->isOneInt() && split->startOffset()->isZeroInt() &&
-          split->stopOffset()->isZeroInt()) {
-        if (split->innerSplit()) {
-          almost_exact_nodes_.mapEntries(split->in(), split->outer());
-        } else {
-          almost_exact_nodes_.mapEntries(split->in(), split->inner());
+      if (auto merge = dynamic_cast<Merge*>(def)) {
+        if (merge->inner()->extent()->isOneInt()) {
+          almost_exact_nodes_.mapEntries(merge->outer(), merge->out());
+        }
+        if (merge->outer()->extent()->isOneInt()) {
+          almost_exact_nodes_.mapEntries(merge->inner(), merge->out());
+        }
+      } else if (auto split = dynamic_cast<Split*>(def)) {
+        if (split->factor()->isOneInt() && split->startOffset()->isZeroInt() &&
+            split->stopOffset()->isZeroInt()) {
+          if (split->innerSplit()) {
+            almost_exact_nodes_.mapEntries(split->in(), split->outer());
+          } else {
+            almost_exact_nodes_.mapEntries(split->in(), split->inner());
+          }
         }
       }
     }
@@ -699,6 +719,7 @@ void IterDomainGraph::initializeId(
     bool is_view_rfactor_id,
     bool is_leaf_id) {
   permissive_nodes_.initializeSet(id);
+  permissive_resize_nodes_.initializeSet(id);
   exact_nodes_.initializeSet(id);
   if (is_leaf_id) {
     loop_nodes_.initializeSet(id);
@@ -1138,6 +1159,17 @@ void ComputeAtMap::buildConcreteIds() {
     auto concrete_id = computeConcreteId(first_id, IdMappingMode::LOOP);
     concrete_id_cache_[disjoint_set_shared_ptr] = concrete_id;
   }
+
+  for (const auto& disjoint_set_shared_ptr :
+       id_graph_.permissiveResizeNodes().disjointSets()) {
+    TORCH_INTERNAL_ASSERT(
+        disjoint_set_shared_ptr->vector().size(),
+        "Cannot compute concrete id of empty set.");
+    auto first_id = disjoint_set_shared_ptr->vector().front();
+    auto concrete_id =
+        computeConcreteId(first_id, IdMappingMode::PERMISSIVE_RESIZE);
+    concrete_id_cache_[disjoint_set_shared_ptr] = concrete_id;
+  }
 }
 
 bool ComputeAtMap::areExactExprs(Expr* expr_1, Expr* expr_2) {
@@ -1360,6 +1392,8 @@ std::string ComputeAtMap::toString() const {
   ss << "Loop map:\n" << idGraphNodesToString(*this, IdMappingMode::LOOP);
   ss << "Permissive map:\n"
      << idGraphNodesToString(*this, IdMappingMode::PERMISSIVE);
+  ss << "Permissive-Resize map:\n"
+     << idGraphNodesToString(*this, IdMappingMode::PERMISSIVE_RESIZE);
   ss << "Consumer maps:\n";
   for (auto key : getSortedKeys(id_graph_.consumers(), Statement::lessThan)) {
     auto consumers = id_graph_.consumers().at(key);
@@ -1420,6 +1454,8 @@ const DisjointSets<IterDomain*>& ComputeAtMap::getIdSets(
       return id_graph_.loopNodes();
     case IdMappingMode::PERMISSIVE:
       return id_graph_.permissiveNodes();
+    case IdMappingMode::PERMISSIVE_RESIZE:
+      return id_graph_.permissiveResizeNodes();
   }
   TORCH_INTERNAL_ASSERT(false, "Error with mapping mode provided.");
 }

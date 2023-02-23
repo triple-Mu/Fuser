@@ -791,6 +791,8 @@ void schedulePointwise(Fusion* fusion, const PointwiseParams& params) {
     inner_most_tensors.erase(output);
   }
   inlineMost(inner_most_tensors);
+
+  scheduler_utils::promoteProducerMemoryTypesOfResizedTensors(fusion);
 }
 
 } // namespace nvfuser

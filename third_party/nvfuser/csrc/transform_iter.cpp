@@ -301,7 +301,8 @@ BestEffortReplay::BestEffortReplay(
     std::unordered_map<IterDomain*, IterDomain*> replay_forward_id_map,
     std::unordered_map<IterDomain*, IterDomain*> target_forward_id_map,
     bool skip_replay_swizzle,
-    bool skip_target_swizzle)
+    bool skip_target_swizzle,
+    bool forward_resize)
     : target2replay_id_map_(std::move(target2replay_map)),
       replay_forward_id_map_(std::move(replay_forward_id_map)),
       target_forward_id_map_(std::move(target_forward_id_map)),
@@ -499,6 +500,15 @@ BestEffortReplay::BestEffortReplay(
       }
     }
 
+    // Forward resize
+    if (forward_resize &&
+        (replay_expr == nullptr || !replay_expr->isA<Resize>()) &&
+        target_expr->isA<Resize>()) {
+      target2replay_id_map_[target_expr->as<Resize>()->out()] =
+          replay_inps.at(0);
+      continue;
+    }
+
     // If expressions of mapped inputs don't match, then continue to next target
     // expr
     if (mismatched_replay_exprs || replay_expr == nullptr) {
@@ -565,6 +575,11 @@ BestEffortReplay::BestEffortReplay(
       auto t_resize = target_expr->as<Resize>();
       if (!r_resize->leftExpand()->sameAs(t_resize->leftExpand()) ||
           !r_resize->rightExpand()->sameAs(t_resize->rightExpand())) {
+        if (forward_resize) {
+          target2replay_id_map_[target_expr->as<Resize>()->out()] =
+              replay_inps.at(0);
+          continue;
+        }
         TORCH_INTERNAL_ASSERT(!replay_has_rfactor_inp, err_str);
         continue;
       }
@@ -715,14 +730,16 @@ struct ForwardingInfo {
       return;
     }
 
-    TORCH_INTERNAL_ASSERT(active_root_dom.size() == active_dim_flags->size());
-
     // Collect which root ids are only in active_tv but not in the inactive
     // tensor.
     std::unordered_set<IterDomain*> forwarded_ids;
-    for (auto i : c10::irange(active_dim_flags->size())) {
-      if (active_dim_flags->at(i)) {
-        forwarded_ids.emplace(active_root_dom.at(i));
+
+    if (active_dim_flags != nullptr) {
+      TORCH_INTERNAL_ASSERT(active_root_dom.size() == active_dim_flags->size());
+      for (auto i : c10::irange(active_dim_flags->size())) {
+        if (active_dim_flags->at(i)) {
+          forwarded_ids.emplace(active_root_dom.at(i));
+        }
       }
     }
 
@@ -973,7 +990,8 @@ BestEffortReplay BestEffortReplay::replayPasC(
     int consumer_compute_at_axis,
     const RootDomainMap& root_map,
     bool skip_producer_swizzle,
-    bool skip_consumer_swizzle) {
+    bool skip_consumer_swizzle,
+    bool forward_resize) {
   if (consumer_compute_at_axis < 0)
     consumer_compute_at_axis += (int)consumer->nDims() + 1;
   TORCH_INTERNAL_ASSERT(
@@ -1012,7 +1030,8 @@ BestEffortReplay BestEffortReplay::replayPasC(
       forwarding_info.producer_forwarding_map,
       forwarding_info.consumer_forwarding_map,
       skip_producer_swizzle,
-      skip_consumer_swizzle);
+      skip_consumer_swizzle,
+      forward_resize);
 
   producer_replay.addComplimentLeafIDs(
       forwarding_info.producer_forwarding_map,

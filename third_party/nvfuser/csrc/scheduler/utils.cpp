@@ -8,6 +8,7 @@
 #include <ir_utils.h>
 #include <root_domain_map.h>
 #include <scheduler/mma_utils.h>
+#include <transform_iter.h>
 #include <transform_replay.h>
 
 #include <algorithm>
@@ -246,7 +247,8 @@ void parallelizeAllLike(
   const auto& reference_dom = reference_tv->domain()->domain();
   for (auto it = reference_dom.begin(); it != reference_dom.begin() + pos;
        it++) {
-    auto ca_id = ca_map.getConcreteMappedID(*it, IdMappingMode::PERMISSIVE);
+    auto ca_id =
+        ca_map.getConcreteMappedID(*it, IdMappingMode::PERMISSIVE_RESIZE);
     concrete_to_reference_map[ca_id] = *it;
   }
 
@@ -258,8 +260,8 @@ void parallelizeAllLike(
       continue;
     }
     for (const auto i : c10::irange(tv->domain()->domain().size())) {
-      auto ca_id =
-          ca_map.getConcreteMappedID(tv->axis(i), IdMappingMode::PERMISSIVE);
+      auto ca_id = ca_map.getConcreteMappedID(
+          tv->axis(i), IdMappingMode::PERMISSIVE_RESIZE);
       if (concrete_to_reference_map.count(ca_id) > 0) {
         auto reference_id = concrete_to_reference_map.at(ca_id);
         auto reference_parallel_type = reference_id->getParallelType();
@@ -938,9 +940,7 @@ std::vector<TensorView*> getViewTVs(Fusion* fusion) {
   for (auto producer_tv : ir_utils::filterByType<TensorView>(fusion_vals)) {
     auto consumer_tvs = ir_utils::consumerTvsOf(producer_tv);
     for (auto consumer_tv : consumer_tvs) {
-      if (consumer_tv->isDefinitionType<ViewOp>() ||
-          consumer_tv->isDefinitionType<PadOp>() ||
-          consumer_tv->isDefinitionType<SliceOp>()) {
+      if (consumer_tv->isDefinitionType<ViewOp>()) {
         view_tvs.push_back(consumer_tv);
       }
     }
@@ -2338,6 +2338,82 @@ bool isFastestDimReduction(TensorView* tv) {
   }
 
   return false;
+}
+
+std::vector<TensorView*> getResizedTensors(Fusion* fusion) {
+  std::vector<TensorView*> resized_tensors;
+
+  auto fusion_vals = fusion->usedMathVals();
+  for (auto tv : ir_utils::filterByType<TensorView>(fusion_vals)) {
+    if (!tv->hasRFactor()) {
+      continue;
+    }
+    auto rf_exprs = StmtSort::getExprsBetween(
+        fusion,
+        {tv->getRootDomain().begin(), tv->getRootDomain().end()},
+        {tv->getMaybeRFactorDomain().begin(),
+         tv->getMaybeRFactorDomain().end()});
+    if (std::any_of(rf_exprs.begin(), rf_exprs.end(), [](Expr* expr) {
+          return expr->isA<Resize>();
+        })) {
+      resized_tensors.push_back(tv);
+    }
+  }
+
+  return resized_tensors;
+}
+
+void promoteProducerMemoryTypesOfResizedTensors(Fusion* fusion) {
+  auto resized_tensors = getResizedTensors(fusion);
+
+  for (auto resized_tensor : resized_tensors) {
+    for (auto producer : ir_utils::producerTvsOf(resized_tensor)) {
+      auto consumers = ir_utils::consumerTvsOf(producer);
+      for (auto consumer : consumers) {
+        auto c2p_map = BestEffortReplay(
+                           producer->domain()->domain(),
+                           consumer->domain()->domain(),
+                           PairwiseRootDomainMap(producer, consumer, true)
+                               .mapConsumerToProducer(
+                                   consumer->domain(), producer->domain()))
+                           .getReplay();
+
+        for (const auto i : c10::irange(
+                 producer->nDims() - producer->getComputeAtPosition())) {
+          auto producer_non_ca_id =
+              producer->axis(i + producer->getComputeAtPosition());
+          auto producer_non_ca_id_ptype = producer_non_ca_id->getParallelType();
+          if (!isParallelTypeThread(producer_non_ca_id_ptype)) {
+            continue;
+          }
+
+          auto consumer_exact_map_id_it = std::find_if(
+              consumer->domain()->domain().begin(),
+              consumer->domain()->domain().end(),
+              [&](IterDomain* consumer_leaf_id) {
+                auto it = c2p_map.find(consumer_leaf_id);
+                return it != c2p_map.end() && it->second == producer_non_ca_id;
+              });
+          if (consumer_exact_map_id_it != consumer->domain()->domain().end() &&
+              (*consumer_exact_map_id_it)->getParallelType() ==
+                  producer_non_ca_id_ptype) {
+            continue;
+          }
+
+          // Promotion required
+          if (isParallelTypeThreadDim(producer_non_ca_id_ptype) &&
+              producer->getMemoryType() == MemoryType::Local) {
+            producer->setMemoryType(MemoryType::Shared);
+          } else if (
+              isParallelTypeBlockDim(producer_non_ca_id_ptype) &&
+              (producer->getMemoryType() == MemoryType::Local ||
+               producer->getMemoryType() == MemoryType::Shared)) {
+            producer->setMemoryType(MemoryType::Global);
+          }
+        }
+      }
+    }
+  }
 }
 
 } // namespace scheduler_utils

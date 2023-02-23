@@ -563,9 +563,9 @@ void IndexCompute::handle(Swizzle2D* swizzle_2d) {
   }
 }
 
-void IndexCompute::handle(Resize* expand) {
-  auto out_id = maybeGetExactMapConcreteID(expand->out());
-  auto in_id = maybeGetExactMapConcreteID(expand->in());
+void IndexCompute::handle(Resize* resize) {
+  auto out_id = maybeGetExactMapConcreteID(resize->out());
+  auto in_id = maybeGetExactMapConcreteID(resize->in());
 
   auto out_it = index_map_.find(out_id);
 
@@ -587,9 +587,9 @@ void IndexCompute::handle(Resize* expand) {
     index_map_[in_id] = out_ind;
     extent_map_[in_id] = getExtent(out_id);
   } else {
-    index_map_[in_id] = sub(out_ind, expand->leftExpand());
+    index_map_[in_id] = sub(out_ind, resize->leftExpand());
     extent_map_[in_id] = sub(
-        sub(getExtent(out_id), expand->leftExpand()), expand->rightExpand());
+        sub(getExtent(out_id), resize->leftExpand()), resize->rightExpand());
   }
 }
 
@@ -1495,6 +1495,8 @@ std::vector<Val*> Index::getNonGlobalProducerStridedIndices(
     const std::unordered_map<IterDomain*, Val*>& override_index) {
   const auto gpu_lower = GpuLower::current();
 
+  std::cerr << "getNonGlobalProducerStridedIndices: " << producer_tv->toString()
+            << ", " << consumer_tv->toString() << std::endl;
   // Replay producer to look like consumer so we can index on producer since our
   // loop nests look like consumer. Resize ops can be replayed safely.
   auto pairwise_map = PairwiseRootDomainMap(producer_tv, consumer_tv);
@@ -1712,6 +1714,7 @@ std::vector<Val*> Index::getNonGlobalProducerStridedIndices(
     }
   }
 
+  std::cerr << "getNonGlobalProducerStridedIndices done\n";
   return strided_inds;
 }
 
@@ -2012,6 +2015,9 @@ std::vector<Val*> Index::getNonGlobalConsumerStridedIndices(
     const std::vector<kir::ForLoop*>& loops) {
   const auto gpu_lower = GpuLower::current();
 
+  std::cerr << "getNonGlobalConsumerStridedIndices: " << consumer_tv->toString()
+            << std::endl;
+
   auto consumer_indexing_from_idgraph = getTensorIndexFromIdGraph(
       loops,
       consumer_tv,
@@ -2155,6 +2161,8 @@ std::vector<Val*> Index::getNonGlobalConsumerStridedIndices(
     }
   }
 
+  std::cerr << "getNonGlobalConsumerStridedIndices done: "
+            << consumer_tv->toString() << std::endl;
   return strided_inds;
 }
 
