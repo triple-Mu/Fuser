@@ -255,6 +255,9 @@ TensorView* scheduleReductionTV(
             << std::endl;
   auto reduction_rf_tv = sortAndRFactor(reduction_tv);
 
+  std::cerr << "after sortAndRFactor: " << reduction_tv->toString()
+            << ", " << reduction_rf_tv->toString() << std::endl;
+
   // In the case of outer grid persistence, make sure the vectorized
   // domain placed at the innermost position.
   // TODO: Why isn't this the case by default?
@@ -391,6 +394,11 @@ void multiReductionInliner(
       }
     }
   }
+
+  std::cerr << "Rfactor done\n";
+  fusion->printMath();
+  std::cout << std::endl;
+
 
   bool unroll = rparams.isUnrolled();
 

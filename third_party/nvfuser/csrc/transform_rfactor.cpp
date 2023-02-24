@@ -210,7 +210,6 @@ class ReplayRFactor : public ReplayTransformations {
     }
   }
 
-  // TODO
   void handle(Resize* resize) override {
     auto id_in = resize->in();
     auto it = id_map_.find(id_in);
@@ -467,7 +466,7 @@ std::pair<TensorDomain*, TensorDomain*> TransformRFactor::runReplay(
   }
 
   ReplayTransformations consumer_replay(
-      original_td->domain(), original_to_consumer_root_map, false);
+      original_td->domain(), original_to_consumer_root_map, false, true);
   auto original_to_consumer_map = consumer_replay.getReplay();
 
   std::vector<IterDomain*> new_consumer_domain;
