@@ -994,7 +994,7 @@ void scheduleReduction(Fusion* fusion, const ReductionParams& rparams) {
   // changes registry needs to change.
   auto reduction_tv = reduction_tvs[0];
 
-  if (ir_utils::getViewOps(fusion).size() > 0) {
+  if (scheduler_utils::getTVsWithNonReductionRFactor(fusion).size() > 0) {
     ComputeAtMap ca_map(fusion);
     // Propagate view transforms through the graph, expecially the reference.
     scheduler_utils::propagateViewTransforms(fusion, ca_map);
@@ -1003,6 +1003,8 @@ void scheduleReduction(Fusion* fusion, const ReductionParams& rparams) {
     // reorder for better merging.
     reduction_tv->reorder(
         scheduler_utils::domainReorderAsRfactorMap(reduction_tv));
+    fusion->printMath();
+    std::cout << "reorder done\n";
   }
 
   auto dim_analysis = scheduler_utils::canonicalDimReduction(
@@ -1029,6 +1031,11 @@ void scheduleReduction(Fusion* fusion, const ReductionParams& rparams) {
   TORCH_INTERNAL_ASSERT(
       reference_tv != nullptr && reduction_tv != nullptr,
       "Need these two tensor views to finish the scheduling.");
+
+  fusion->printMath();
+  std::cout << "Before multiReIn"
+            << ", ref: " << reference_tv->toString() << std::endl;
+
   reduction_scheduler_utils::multiReductionInliner(
       fusion,
       rparams,

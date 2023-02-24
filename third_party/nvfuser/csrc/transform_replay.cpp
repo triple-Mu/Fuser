@@ -548,7 +548,7 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
 
   // Replay producer dimensions.
   ReplayTransformations replay_CasP(
-      target_producer_ids, forwarded_replay_map, replay_swizzle, false);
+      target_producer_ids, forwarded_replay_map, false, true, replay_swizzle);
 
   auto consumer_leaf_ids(replay_CasP.getUnorderedLeafIDs());
 
@@ -715,6 +715,7 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
       new_IDs,
       consumer->domain()->contiguity());
 
+  std::cerr << "replayCasP: replayed: " << replayed->toString() << std::endl;
   return {replayed, consumer_pos};
 }
 

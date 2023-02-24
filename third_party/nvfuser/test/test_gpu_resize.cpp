@@ -1431,6 +1431,162 @@ TEST_F(NVFuserTest, FusionSliceReduceScheduler3_CUDA) {
       __FILE__);
 }
 
+TEST_F(NVFuserTest, FusionCatReduceScheduler1_CUDA) {
+  auto fusion_ptr = std::make_unique<Fusion>();
+  auto& fusion = *fusion_ptr;
+  FusionGuard fg(fusion_ptr.get());
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+  auto tv1 = makeSymbolicTensor(2);
+  fusion.addInput(tv1);
+
+  auto tv2 = cat({tv0, tv1}, 1);
+  auto tv3 = sum(tv2, {1});
+  fusion.addOutput(tv3);
+
+  std::vector<int64_t> shape0({11, 12});
+  std::vector<int64_t> shape1({shape0[0], 13});
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape0, options);
+  auto t1 = at::randn(shape1, options);
+  std::vector<c10::IValue> aten_inputs({t0, t1});
+
+  FusionExecutorCache executor_cache(std::move(fusion_ptr));
+  auto cg_outputs = executor_cache.runFusionWithInputs(aten_inputs);
+
+  auto ref = at::cat({t0, t1}, 1).sum({1});
+
+  testValidate(
+      executor_cache.fusion(),
+      cg_outputs,
+      aten_inputs,
+      {ref},
+      __LINE__,
+      __FILE__);
+}
+
+TEST_F(NVFuserTest, FusionCatSoftmaxScheduler1_CUDA) {
+  auto fusion_ptr = std::make_unique<Fusion>();
+  auto& fusion = *fusion_ptr;
+  FusionGuard fg(fusion_ptr.get());
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+  auto tv1 = makeSymbolicTensor(2);
+  fusion.addInput(tv1);
+
+  auto tv2 = cat({tv0, tv1}, 1);
+  auto tv3 = softmax(tv2, 1);
+  fusion.addOutput(tv3);
+
+  std::vector<int64_t> shape0({11, 99});
+  std::vector<int64_t> shape1({shape0[0], 100});
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape0, options);
+  auto t1 = at::randn(shape1, options);
+  std::vector<c10::IValue> aten_inputs({t0, t1});
+
+  FusionExecutorCache executor_cache(std::move(fusion_ptr));
+  auto cg_outputs = executor_cache.runFusionWithInputs(aten_inputs);
+
+  auto t2 = at::cat({t0, t1}, 1);
+  auto ref = at::_softmax(t2.to(at::kDouble), -1, false);
+
+  testValidate(
+      executor_cache.fusion(),
+      cg_outputs,
+      aten_inputs,
+      {ref},
+      __LINE__,
+      __FILE__);
+}
+
+TEST_F(NVFuserTest, FusionReductionSliceScheduler1_CUDA) {
+  auto fusion_ptr = std::make_unique<Fusion>();
+  auto& fusion = *fusion_ptr;
+  FusionGuard fg(fusion_ptr.get());
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+
+  auto tv1 = sum(tv0, {1});
+  auto tv2 = slice(
+      tv1,
+      {{IrBuilder::create<Int>(1),
+        sub(tv1->axis(0)->extent(), IrBuilder::create<Int>(2))}});
+  fusion.addOutput(tv2);
+
+  std::vector<int64_t> shape0({110, 12345});
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape0, options);
+  std::vector<c10::IValue> aten_inputs({t0});
+
+  FusionExecutorCache executor_cache(std::move(fusion_ptr));
+  auto cg_outputs = executor_cache.runFusionWithInputs(aten_inputs);
+
+  auto t1 = t0.to(at::kDouble).sum({1});
+  auto t2 = t1.index({at::indexing::Slice(1, shape0[0] - 2)});
+
+  testValidate(
+      executor_cache.fusion(),
+      cg_outputs,
+      aten_inputs,
+      {t2},
+      __LINE__,
+      __FILE__);
+}
+
+TEST_F(NVFuserTest, FusionSoftmaxSliceScheduler1_CUDA) {
+  auto fusion_ptr = std::make_unique<Fusion>();
+  auto& fusion = *fusion_ptr;
+  FusionGuard fg(fusion_ptr.get());
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+
+  auto tv1 = softmax(tv0, 1);
+  auto tv2 = slice(
+      tv1,
+      {Slice(),
+       {IrBuilder::create<Int>(1),
+        sub(tv1->axis(1)->extent(), IrBuilder::create<Int>(2))}});
+  fusion.addOutput(tv2);
+
+  std::vector<int64_t> shape0({110, 12345});
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape0, options);
+  std::vector<c10::IValue> aten_inputs({t0});
+
+  FusionExecutorCache executor_cache(std::move(fusion_ptr));
+  auto cg_outputs = executor_cache.runFusionWithInputs(aten_inputs);
+
+  auto t1 = at::_softmax(t0.to(at::kDouble), -1, false);
+  auto t2 = t1.index(
+      {at::indexing::Slice(0, at::indexing::None),
+       at::indexing::Slice(1, shape0[1] - 2)});
+
+  testValidate(
+      executor_cache.fusion(),
+      cg_outputs,
+      aten_inputs,
+      {t2},
+      __LINE__,
+      __FILE__);
+}
+
 TEST_F(NVFuserTest, TMP) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;

@@ -909,12 +909,12 @@ IndexFromIdGraph getTensorIndexFromIdGraph(
       GpuLower::current()->haloInfo(),
       GpuLower::current()->concretizedBroadcastDomains(),
       p2c_map);
-
+#if 0
   if (index_producer) {
     std::cerr << "updating indexing for producer: " << producer_tv->toString()
               << std::endl;
   }
-
+#endif
   auto target_indexing = indexing.updateIndexCompute(
       target_tv->domain(), index_update_map, contig_finder);
 

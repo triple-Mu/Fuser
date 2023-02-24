@@ -226,6 +226,20 @@ ReplayTransformations::ReplayTransformations(
           "Expected IterDomain only for Replay Transformations, but found ",
           val);
       IterDomain* id = val->as<IterDomain>();
+      if (id_map_.find(id) == id_map_.end()) {
+        std::cerr << "Not found: " << id->toString() << std::endl;
+        std::cerr << "target domain: "
+                  << toDelimitedString(
+                         target_domain_.begin(), target_domain_.end())
+                  << std::endl;
+        std::cerr << "id_map:\n";
+        for (auto kv : id_map_) {
+          std::cerr << "\t" << kv.first->toString() << ", "
+                    << kv.second->toString() << std::endl;
+        }
+        std::cerr << "id_map done\n";
+      }
+
       TORCH_INTERNAL_ASSERT(
           id_map_.find(id) != id_map_.end(),
           "Could not find required input: ",

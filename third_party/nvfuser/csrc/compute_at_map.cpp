@@ -340,6 +340,8 @@ void IterDomainGraph::build(Fusion* fusion) {
     const auto& domain = tv->domain()->domain();
     auto all_ids = ir_utils::allIDsOf(tv);
 
+    std::cerr << "TV: " << tv->toString() << std::endl;
+
     // Check is this domain is a consumer of a view-like operation
     bool view_like_domain = tv->domain()->hasViewLikeRFactor();
 
@@ -358,6 +360,9 @@ void IterDomainGraph::build(Fusion* fusion) {
       }
       bool is_leaf_id =
           std::find(domain.begin(), domain.end(), id) != domain.end();
+      std::cerr << "Init: " << id->toString()
+                << ", is_view: " << is_view_rfactor_id
+                << ", leaf: " << is_leaf_id << std::endl;
       initializeId(id, is_view_rfactor_id, is_leaf_id);
     }
   }

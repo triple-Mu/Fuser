@@ -251,6 +251,8 @@ TensorView* scheduleReductionTV(
     }
   }
 
+  std::cerr << "Before sortAndRFactor: " << reduction_tv->toString()
+            << std::endl;
   auto reduction_rf_tv = sortAndRFactor(reduction_tv);
 
   // In the case of outer grid persistence, make sure the vectorized
@@ -649,6 +651,7 @@ TensorView* sortAndRFactor(TensorView* reference_tv) {
     rfactor_axes.emplace_back(axis_i);
   }
 
+  std::cerr << "reordered: " << reference_tv->toString() << std::endl;
   if (reduction_dims == rfactor_axes.size()) {
     return ir_utils::rfactorHelper(reference_tv, rfactor_axes_no_unswitch);
   }

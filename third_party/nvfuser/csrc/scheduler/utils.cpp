@@ -233,6 +233,8 @@ void parallelizeAllLike(
     bool propagate_padding) {
   FusionGuard fg(reference_tv->fusion());
 
+  reference_tv->fusion()->printMath();
+  std::cout << "Reference: " << reference_tv->toString() << std::endl;
   if (pos < 0) {
     pos += reference_tv->nDims() + 1;
   }
@@ -2195,6 +2197,7 @@ std::unordered_map<int, int> domainReorderAsRfactorMap(TensorView* tv) {
   // expressions. We'll always insert the result of split in the location of the
   // input, and insert the merge result in the position of the inner dimension.
 
+  std::cerr << "domainReorderAsRfactorMap: " << tv->toString() << std::endl;
   auto reordered_ids = tv->getMaybeRFactorDomain();
   for (const auto* expr : transform_exprs) {
     if (const Split* split = dynamic_cast<const Split*>(expr)) {
@@ -2235,6 +2238,18 @@ std::unordered_map<int, int> domainReorderAsRfactorMap(TensorView* tv) {
 
       reordered_ids.erase(reordered_ids.begin() + pos0);
       reordered_ids[--pos1] = merge->out();
+    } else if (const Resize* resize = dynamic_cast<const Resize*>(expr)) {
+      auto find_it =
+          std::find(reordered_ids.begin(), reordered_ids.end(), resize->in());
+      if (find_it == reordered_ids.end()) {
+        // Transformations before rfactor, ignore those.
+        continue;
+      }
+      // auto pos = std::distance(reordered_ids.begin(), find_it);
+      // reordered_ids[pos] = resize->out();
+      *find_it = resize->out();
+    } else {
+      TORCH_INTERNAL_ASSERT(false);
     }
   }
 
@@ -2258,6 +2273,7 @@ void propagateViewTransforms(Fusion* fusion, const ComputeAtMap& ca_map) {
   std::unordered_set<std::shared_ptr<VectorOfUniqueEntries<IterDomain*>>>
       transformed_disjoint_sets;
 
+  std::cerr << "Propagating view trans\n";
   // If iter domains are involved in any transformation from root domains to
   // rfactor domains they should be considered "contaminated".
   for (auto tv : ir_utils::allTvs(fusion)) {
