@@ -1494,9 +1494,10 @@ std::vector<Val*> Index::getNonGlobalProducerStridedIndices(
     const std::vector<kir::ForLoop*>& loops,
     const std::unordered_map<IterDomain*, Val*>& override_index) {
   const auto gpu_lower = GpuLower::current();
-
+#if 0
   std::cerr << "getNonGlobalProducerStridedIndices: " << producer_tv->toString()
             << ", " << consumer_tv->toString() << std::endl;
+#endif
   // Replay producer to look like consumer so we can index on producer since our
   // loop nests look like consumer. Resize ops can be replayed safely.
   auto pairwise_map = PairwiseRootDomainMap(producer_tv, consumer_tv);
@@ -1714,7 +1715,7 @@ std::vector<Val*> Index::getNonGlobalProducerStridedIndices(
     }
   }
 
-  std::cerr << "getNonGlobalProducerStridedIndices done\n";
+  // std::cerr << "getNonGlobalProducerStridedIndices done\n";
   return strided_inds;
 }
 
@@ -2014,10 +2015,10 @@ std::vector<Val*> Index::getNonGlobalConsumerStridedIndices(
     const TensorView* consumer_tv,
     const std::vector<kir::ForLoop*>& loops) {
   const auto gpu_lower = GpuLower::current();
-
+#if 0
   std::cerr << "getNonGlobalConsumerStridedIndices: " << consumer_tv->toString()
             << std::endl;
-
+#endif
   auto consumer_indexing_from_idgraph = getTensorIndexFromIdGraph(
       loops,
       consumer_tv,
@@ -2160,9 +2161,10 @@ std::vector<Val*> Index::getNonGlobalConsumerStridedIndices(
       strided_inds.push_back(db_strided_index);
     }
   }
-
+#if 0
   std::cerr << "getNonGlobalConsumerStridedIndices done: "
             << consumer_tv->toString() << std::endl;
+#endif
   return strided_inds;
 }
 

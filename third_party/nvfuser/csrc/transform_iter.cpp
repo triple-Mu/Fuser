@@ -208,13 +208,13 @@ ReplayTransformations::ReplayTransformations(
     const std::vector<IterDomain*>& _target_domain,
     std::unordered_map<IterDomain*, IterDomain*> _id_map,
     bool _error_on_failure,
-    bool replay_swizzle,
-    bool replay_resize)
+    bool replay_resize,
+    bool replay_swizzle)
     : target_domain_(_target_domain),
       id_map_(std::move(_id_map)),
       error_on_failure_(_error_on_failure),
-      replay_swizzle_(replay_swizzle),
-      replay_resize_(replay_resize) {
+      replay_resize_(replay_resize),
+      replay_swizzle_(replay_swizzle) {
   // Make sure id_map has all the inputs needed to replay target_domain
   auto inps = IterVisitor::getInputsTo(
       std::vector<Val*>(target_domain_.begin(), target_domain_.end()));
@@ -532,7 +532,13 @@ BestEffortReplay::BestEffortReplay(
     // If there isn't an rfactor id in the replay's inputs and there's a
     // mismatch in replay_expr's and target_expr's outputs, continue
     if (target_expr->outputs().size() != replay_expr->outputs().size()) {
-      TORCH_INTERNAL_ASSERT(!replay_has_rfactor_inp, err_str);
+      TORCH_INTERNAL_ASSERT(
+          !replay_has_rfactor_inp,
+          err_str,
+          ". Target: ",
+          target_expr->toString(),
+          ", repaly: ",
+          replay_expr->toString());
       continue;
     }
 

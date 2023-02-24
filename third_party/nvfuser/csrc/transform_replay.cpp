@@ -303,6 +303,11 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
   // always safe to propagate resize
   const auto sole_consumer = producer->uses().size() == 1;
 
+  if (producer->name() == 2) {
+    std::cerr << "Sole consumer: " << sole_consumer
+              << ", producer: " << producer->toString() << std::endl;
+  }
+
   // Replay producer dimensions.
   ReplayTransformations replay_PasC(
       target_consumer_ids,
@@ -492,6 +497,9 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
     const RootDomainMap& root_map,
     bool replay_swizzle) {
   FUSER_PERF_SCOPE("TransformReplay::replayCasP");
+
+  std::cerr << "replayCasP: " << consumer->toString()
+            << ", producer: " << producer->toString() << std::endl;
 
   // If this is a reduction operation, we may call transform_replay on the same
   // tensor view. When this happens, just return thet target view.

@@ -1273,7 +1273,8 @@ class ReductionScheduler : public SchedulerEntry {
       return false;
     }
 
-    if (ir_utils::getViewOps(fusion).size() > 0) {
+    // if (ir_utils::getViewOps(fusion).size() > 0) {
+    if (scheduler_utils::getTVsWithNonReductionRFactor(fusion).size() > 0) {
       ComputeAtMap ca_map(fusion);
       if (requiresForwardViewReplay(fusion, ca_map)) {
         scheduler_debug_utils::canScheduleRejectReason(

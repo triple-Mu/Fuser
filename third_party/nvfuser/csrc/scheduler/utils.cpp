@@ -959,6 +959,19 @@ std::vector<TensorView*> getTVsWithRFactor(Fusion* fusion) {
   return tvs_with_rfactor;
 }
 
+std::vector<TensorView*> getTVsWithNonReductionRFactor(Fusion* fusion) {
+  std::vector<TensorView*> tvs_with_rfactor;
+  auto fusion_vals = fusion->usedMathVals();
+  std::copy_if(
+      ir_utils::filterByType<TensorView>(fusion_vals).begin(),
+      ir_utils::filterByType<TensorView>(fusion_vals).end(),
+      std::back_inserter(tvs_with_rfactor),
+      [](TensorView* tv) {
+        return tv->hasRFactor() && !ir_utils::isReductionOp(tv->definition());
+      });
+  return tvs_with_rfactor;
+}
+
 // Reset inputs and outputs to global memory, everything else to local.
 void clearMemorySpace(Fusion* fusion) {
   for (auto tv : ir_utils::allTvs(fusion)) {

@@ -206,6 +206,9 @@ std::vector<TensorView*> getViewTVs(Fusion* fusion);
 // Returns a list of TensorViews that have a rfactor domain
 std::vector<TensorView*> getTVsWithRFactor(Fusion* fusion);
 
+// Returns a list of TensorViews that have a rfactor domain
+std::vector<TensorView*> getTVsWithNonReductionRFactor(Fusion* fusion);
+
 // Reset inputs and outputs to global memory, everything else to local.
 void clearMemorySpace(Fusion* fusion);
 

@@ -55,8 +55,9 @@ class TORCH_CUDA_CU_API ReplayTransformations : public IterVisitor {
   // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
   bool ran_replay = false; // Mark if replay has been run
   // NOLINTNEXTLINE(cppcoreguidelines-non-private-member-variables-in-classes)
-  bool replay_swizzle_ = false;
   bool replay_resize_ = false;
+  bool replay_swizzle_ = false;
+
   using IterVisitor::handle;
 
   // Transform dispatch

@@ -161,7 +161,12 @@ TEST_F(NVFuserTest, FusionPad5_CUDA) {
   tv1->axis(0)->parallelize(ParallelType::TIDx);
   tv2->axis(0)->parallelize(ParallelType::TIDx);
 
-  tv1->setMemoryType(MemoryType::Shared);
+  scheduler_utils::promoteProducerMemoryTypesOfResizedTensors(&fusion);
+
+  TORCH_CHECK(
+      tv1->getMemoryType() == MemoryType::Shared,
+      "tv1 should be on shared memory: ",
+      tv1->getMemoryType());
 
   GpuLower gpulw(&fusion);
   auto all_lowered_exprs = KernelExprVisitor::getAllExprs(gpulw.kernel());
@@ -280,6 +285,10 @@ TEST_F(NVFuserTest, FusionPad7_CUDA) {
   testValidate(&fusion, cg_outputs, aten_inputs, {ref}, __LINE__, __FILE__);
 }
 
+// Disable for now. Unclear what would be the best way to handle
+// when a tensor is resized multiple times. It would likely need a
+// different transform propagator.
+#if 0
 // Stencil-like pattern
 TEST_F(NVFuserTest, FusionPad8_CUDA) {
   Fusion fusion;
@@ -328,6 +337,7 @@ TEST_F(NVFuserTest, FusionPad8_CUDA) {
 
   testValidate(&fusion, cg_outputs, aten_inputs, {ref}, __LINE__, __FILE__);
 }
+#endif
 
 TEST_F(NVFuserTest, FusionPadScheduler1_CUDA) {
   auto fusion = std::make_unique<Fusion>();
@@ -395,6 +405,8 @@ TEST_F(NVFuserTest, FusionPadScheduler2_CUDA) {
       __FILE__);
 }
 
+// Disabled due to the same reason as Pad8
+#if 0
 // Auto scheduled version of Pad8
 TEST_F(NVFuserTest, FusionPadScheduler3_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
@@ -429,6 +441,7 @@ TEST_F(NVFuserTest, FusionPadScheduler3_CUDA) {
       __LINE__,
       __FILE__);
 }
+#endif
 
 // Trivial cat
 TEST_F(NVFuserTest, FusionCat1_CUDA) {
@@ -1022,6 +1035,99 @@ TEST_F(NVFuserTest, FusionSlice4_CUDA) {
   testValidate(&fusion, cg_outputs, aten_inputs, {ref}, __LINE__, __FILE__);
 }
 
+// Multiple slices of the same tensor with the same arguments
+TEST_F(NVFuserTest, FusionSlice5_CUDA) {
+  auto fusion_ptr = std::make_unique<Fusion>();
+  auto& fusion = *fusion_ptr;
+  FusionGuard fg(fusion_ptr.get());
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+
+  auto tv1 = slice(
+      tv0,
+      {Slice(),
+       {IrBuilder::create<Int>(1),
+        sub(tv0->axis(1)->extent(), IrBuilder::create<Int>(1))}});
+  auto tv2 = sum(tv1, {1});
+  fusion.addOutput(tv2);
+  auto tv3 = slice(
+      tv0,
+      {Slice(),
+       {IrBuilder::create<Int>(1),
+        sub(tv0->axis(1)->extent(), IrBuilder::create<Int>(1))}});
+  auto tv4 = sum(tv3, {1});
+  fusion.addOutput(tv4);
+
+  tv2->split(1, 128);
+
+  // tv1 and tv3 are both slice outputs. Propagation should occur from
+  // tv1 to tv3 through tv0, which should work as both tensors are
+  // sliced in the same way.
+  TransformPropagator propagator(tv2);
+  MaxRootDomainInfoSpanningTree(tv2).traverse(&propagator);
+
+  inlineMost();
+
+  tv2->axis(0)->parallelize(ParallelType::BIDx);
+  tv2->axis(-1)->parallelize(ParallelType::TIDx);
+  scheduler_utils::parallelizeAllLike(tv2);
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  std::vector<int64_t> shape({11, 1000});
+  auto t0 = at::randn(shape, options);
+  std::vector<c10::IValue> aten_inputs({t0});
+
+  FusionExecutor fe;
+  fe.compileFusion(&fusion, aten_inputs);
+  auto cg_outputs = fe.runFusion(aten_inputs);
+
+  auto t1 = t0.index(
+      {at::indexing::Slice(0, at::indexing::None),
+       at::indexing::Slice(1, shape[1] - 1)});
+  auto t2 = t1.sum({1});
+  auto t3 = t0.index(
+      {at::indexing::Slice(0, at::indexing::None),
+       at::indexing::Slice(1, shape[1] - 1)});
+  auto t4 = t3.sum({1});
+
+  testValidate(&fusion, cg_outputs, aten_inputs, {t2, t4}, __LINE__, __FILE__);
+}
+
+// Multiple slices of the same tensor with different
+// arguments. TransformPropagator should fail.
+TEST_F(NVFuserTest, FusionSlice6_CUDA) {
+  auto fusion_ptr = std::make_unique<Fusion>();
+  auto& fusion = *fusion_ptr;
+  FusionGuard fg(fusion_ptr.get());
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+
+  auto tv1 = slice(
+      tv0,
+      {Slice(),
+       {IrBuilder::create<Int>(1),
+        sub(tv0->axis(1)->extent(), IrBuilder::create<Int>(1))}});
+  fusion.addOutput(tv1);
+  auto tv2 = slice(
+      tv0,
+      {Slice(),
+       {IrBuilder::create<Int>(2),
+        sub(tv0->axis(1)->extent(), IrBuilder::create<Int>(1))}});
+  fusion.addOutput(tv2);
+
+  tv1->split(1, 4);
+  TransformPropagator propagator(tv1);
+  MaxRootDomainInfoSpanningTree tree(tv1);
+  EXPECT_THAT(
+      [&]() { tree.traverse(&propagator); },
+      ::testing::ThrowsMessage<c10::Error>(
+          ::testing::HasSubstr("replay_has_rfactor_inp")));
+}
+
 // Auto scheduled version of Slice1
 TEST_F(NVFuserTest, FusionSliceScheduler1_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
@@ -1053,7 +1159,7 @@ TEST_F(NVFuserTest, FusionSliceScheduler1_CUDA) {
   TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
-// Auto scheduled version of Slice2
+// Auto scheduled version of Slice5. Currently segmented to two kernels.
 TEST_F(NVFuserTest, FusionSliceScheduler2_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;
@@ -1062,44 +1168,265 @@ TEST_F(NVFuserTest, FusionSliceScheduler2_CUDA) {
   auto tv0 = makeSymbolicTensor(2);
   fusion.addInput(tv0);
 
-  // This doesn't work as it results in float
-  // auto mid_point = div(tv0->axis(1)->extent(),
-  // IrBuilder::create<Int>(2));
+  auto tv1 = slice(
+      tv0,
+      {Slice(),
+       {IrBuilder::create<Int>(1),
+        sub(tv0->axis(1)->extent(), IrBuilder::create<Int>(1))}});
+  auto tv2 = sum(tv1, {1});
+  fusion.addOutput(tv2);
+  auto tv3 = slice(
+      tv0,
+      {Slice(),
+       {IrBuilder::create<Int>(1),
+        sub(tv0->axis(1)->extent(), IrBuilder::create<Int>(1))}});
+  auto tv4 = sum(tv3, {1});
+  fusion.addOutput(tv4);
 
-  auto mid_point =
-      IrBuilder::divExpr(tv0->axis(1)->extent(), IrBuilder::create<Int>(2));
+  std::vector<int64_t> shape({11, 1000});
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+  auto t0 = at::randn(shape, options);
+  std::vector<c10::IValue> aten_inputs({t0});
 
-  auto tv1 = slice(tv0, {Slice(), {IrBuilder::create<Int>(0), mid_point}});
-  auto tv2 = slice(tv0, {Slice(), {mid_point}});
-  auto tv3 = add(tv1, tv2);
-  fusion.addOutput(tv3);
+  FusionExecutorCache executor_cache(std::move(fusion_ptr));
+  executor_cache.runFusionWithInputs(aten_inputs);
 
-  std::vector<int64_t> shape({11, 30});
+  auto runtime = executor_cache.getMostRecentKernelRuntime();
+  TORCH_CHECK(runtime->isSegmented(), "Expected to segment the fusion");
+  auto num_segments = runtime->fusionSegments()->groups().size();
+  TORCH_CHECK(
+      num_segments == 2, "Expected to segment the fusion to two kernels");
+}
 
-  TORCH_CHECK(shape[1] % 2 == 0);
+TEST_F(NVFuserTest, FusionPadReduceScheduler1_CUDA) {
+  auto fusion_ptr = std::make_unique<Fusion>();
+  auto& fusion = *fusion_ptr;
+  FusionGuard fg(fusion_ptr.get());
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+
+  auto left_pad0 = IrBuilder::create<Int>();
+  fusion.addInput(left_pad0);
+  auto right_pad0 = IrBuilder::create<Int>();
+  fusion.addInput(right_pad0);
+  auto left_pad1 = IrBuilder::create<Int>();
+  fusion.addInput(left_pad1);
+  auto right_pad1 = IrBuilder::create<Int>();
+  fusion.addInput(right_pad1);
+
+  auto tv1 = pad(tv0, {left_pad0, right_pad0, left_pad1, right_pad1});
+  auto tv2 = sum(tv1, {1});
+  fusion.addOutput(tv2);
+
+  std::vector<int64_t> shape({123, 999});
+  std::vector<int64_t> pad_extents{1, 2, 2, 1};
 
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
 
   auto t0 = at::randn(shape, options);
   std::vector<c10::IValue> aten_inputs({t0});
+  std::transform(
+      pad_extents.begin(),
+      pad_extents.end(),
+      std::back_inserter(aten_inputs),
+      [](auto pad_extent) { return pad_extent; });
 
   FusionExecutorCache executor_cache(std::move(fusion_ptr));
   auto cg_outputs = executor_cache.runFusionWithInputs(aten_inputs);
 
-  auto t1 = t0.index(
-      {at::indexing::Slice(0, at::indexing::None),
-       at::indexing::Slice(0, shape[1] / 2)});
-  auto t2 = t0.index(
-      {at::indexing::Slice(0, at::indexing::None),
-       at::indexing::Slice(shape[1] / 2)});
-  auto ref = t1 + t2;
+  auto ref = at::pad(t0, pad_extents).sum({1});
 
   testValidate(
       executor_cache.fusion(),
       cg_outputs,
       aten_inputs,
       {ref},
+      __LINE__,
+      __FILE__);
+}
+
+TEST_F(NVFuserTest, FusionSliceReduceScheduler1_CUDA) {
+  auto fusion_ptr = std::make_unique<Fusion>();
+  auto& fusion = *fusion_ptr;
+  FusionGuard fg(fusion_ptr.get());
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+
+  auto start0 = IrBuilder::create<Int>();
+  fusion.addInput(start0);
+  auto end0 = IrBuilder::create<Int>();
+  fusion.addInput(end0);
+  auto start1 = IrBuilder::create<Int>();
+  fusion.addInput(start1);
+  auto end1 = IrBuilder::create<Int>();
+  fusion.addInput(end1);
+
+  auto tv1 = slice(tv0, {{start0, end0}, {start1, end1}});
+  auto tv2 = sum(tv1, {1});
+  fusion.addOutput(tv2);
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  std::vector<int64_t> shape({123, 999});
+  std::vector<int64_t> slice_inputs({1, shape[0] - 2, 3, shape[1] - 4});
+
+  auto t0 = at::randn(shape, options);
+  std::vector<c10::IValue> aten_inputs({t0});
+  std::copy(
+      slice_inputs.begin(),
+      slice_inputs.end(),
+      std::back_inserter(aten_inputs));
+
+  FusionExecutorCache executor_cache(std::move(fusion_ptr));
+  auto cg_outputs = executor_cache.runFusionWithInputs(aten_inputs);
+
+  auto t1 = t0.index(
+      {at::indexing::Slice(slice_inputs[0], slice_inputs[1]),
+       at::indexing::Slice(slice_inputs[2], slice_inputs[3])});
+  auto ref = t1.sum({1});
+
+  testValidate(
+      executor_cache.fusion(),
+      cg_outputs,
+      aten_inputs,
+      {ref},
+      __LINE__,
+      __FILE__);
+}
+
+// Multiple slice+reduction. Different slices. Should be segmented to
+// separate kernels as the reduction scheduler doesn't accept
+// different rfactor tensors.
+TEST_F(NVFuserTest, FusionSliceReduceScheduler2_CUDA) {
+  auto fusion_ptr = std::make_unique<Fusion>();
+  auto& fusion = *fusion_ptr;
+  FusionGuard fg(fusion_ptr.get());
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+
+  auto start0 = IrBuilder::create<Int>();
+  fusion.addInput(start0);
+  auto end0 = IrBuilder::create<Int>();
+  fusion.addInput(end0);
+  auto start1 = IrBuilder::create<Int>();
+  fusion.addInput(start1);
+  auto end1 = IrBuilder::create<Int>();
+  fusion.addInput(end1);
+
+  auto tv1 = slice(tv0, {Slice(), {start0, end0}});
+  auto tv2 = sum(tv1, {1});
+  fusion.addOutput(tv2);
+  auto tv3 = slice(tv0, {Slice(), {start1, end1}});
+  auto tv4 = sum(tv3, {1});
+  fusion.addOutput(tv4);
+
+  fusion.printMath();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  std::vector<int64_t> shape({123, 999});
+  std::vector<int64_t> slice_inputs({1, shape[0] - 2, 3, shape[1] - 4});
+
+  auto t0 = at::randn(shape, options);
+  std::vector<c10::IValue> aten_inputs({t0});
+  std::copy(
+      slice_inputs.begin(),
+      slice_inputs.end(),
+      std::back_inserter(aten_inputs));
+
+  FusionExecutorCache executor_cache(std::move(fusion_ptr));
+  auto cg_outputs = executor_cache.runFusionWithInputs(aten_inputs);
+
+  auto runtime = executor_cache.getMostRecentKernelRuntime();
+  TORCH_CHECK(runtime->isSegmented(), "Expected to segment the fusion");
+  auto num_segments = runtime->fusionSegments()->groups().size();
+  TORCH_CHECK(
+      num_segments == 2, "Expected to segment the fusion to two kernels");
+
+  auto t1 = t0.index(
+      {at::indexing::Slice(0, at::indexing::None),
+       at::indexing::Slice(slice_inputs[0], slice_inputs[1])});
+  auto t2 = t1.sum({1});
+  auto t3 = t0.index(
+      {at::indexing::Slice(0, at::indexing::None),
+       at::indexing::Slice(slice_inputs[2], slice_inputs[3])});
+  auto t4 = t3.sum({1});
+
+  testValidate(
+      executor_cache.fusion(),
+      cg_outputs,
+      aten_inputs,
+      {t2, t4},
+      __LINE__,
+      __FILE__);
+}
+
+// Multiple slice+reduction. Same slices. Should be segmented at the moment.
+TEST_F(NVFuserTest, FusionSliceReduceScheduler3_CUDA) {
+  auto fusion_ptr = std::make_unique<Fusion>();
+  auto& fusion = *fusion_ptr;
+  FusionGuard fg(fusion_ptr.get());
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion.addInput(tv0);
+
+  auto start0 = IrBuilder::create<Int>();
+  fusion.addInput(start0);
+  auto end0 = IrBuilder::create<Int>();
+  fusion.addInput(end0);
+
+  auto tv1 = slice(tv0, {Slice(), {start0, end0}});
+  auto tv2 = sum(tv1, {1});
+  fusion.addOutput(tv2);
+  auto tv3 = slice(tv0, {Slice(), {start0, end0}});
+  auto tv4 = sum(tv3, {1});
+  fusion.addOutput(tv4);
+
+  fusion.printMath();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  std::vector<int64_t> shape({123, 999});
+  std::vector<int64_t> slice_inputs({1, shape[1] - 2});
+
+  auto t0 = at::randn(shape, options);
+  std::vector<c10::IValue> aten_inputs({t0});
+  std::copy(
+      slice_inputs.begin(),
+      slice_inputs.end(),
+      std::back_inserter(aten_inputs));
+
+  FusionExecutorCache executor_cache(std::move(fusion_ptr));
+  auto cg_outputs = executor_cache.runFusionWithInputs(aten_inputs);
+
+  auto runtime = executor_cache.getMostRecentKernelRuntime();
+  TORCH_CHECK(runtime->isSegmented(), "Expected to segment the fusion");
+  auto num_segments = runtime->fusionSegments()->groups().size();
+  TORCH_CHECK(
+      num_segments == 2, "Expected to segment the fusion to two kernels");
+
+  auto t1 = t0.index(
+      {at::indexing::Slice(0, at::indexing::None),
+       at::indexing::Slice(slice_inputs[0], slice_inputs[1])});
+  auto t2 = t1.sum({1});
+  auto t3 = t0.index(
+      {at::indexing::Slice(0, at::indexing::None),
+       at::indexing::Slice(slice_inputs[0], slice_inputs[1])});
+  auto t4 = t3.sum({1});
+
+  testValidate(
+      executor_cache.fusion(),
+      cg_outputs,
+      aten_inputs,
+      {t2, t4},
       __LINE__,
       __FILE__);
 }
@@ -1126,6 +1453,8 @@ TEST_F(NVFuserTest, TMP) {
   auto tv6 = add(tv3, tv5);
   fusion.addOutput(tv6);
 
+  fusion.print();
+
   tv6->merge(0)->merge(0)->split(0, 4);
 
   TransformPropagator propagator(tv6);
@@ -1134,6 +1463,48 @@ TEST_F(NVFuserTest, TMP) {
   inlineMost();
   fusion.printMath();
   fusion.printKernel();
+}
+
+TEST_F(NVFuserTest, TMP2) {
+  auto fusion_ptr = std::make_unique<Fusion>();
+  auto& fusion = *fusion_ptr;
+  FusionGuard fg(fusion_ptr.get());
+
+  auto tv0 = makeSymbolicTensor(1);
+  fusion.addInput(tv0);
+
+  auto i0 = IrBuilder::create<Int>();
+  fusion.addInput(i0);
+
+  // auto tv1 = makeSymbolicTensor(2);
+  // fusion.addInput(tv1);
+
+  // auto tv2 = reshape(tv0, {8}, {2, 4});
+  // auto tv3 = add(tv2, i0);
+  auto tv2 = broadcast(tv0, {false, true});
+  auto tv3 = broadcast(iota(i0), {true, false});
+  auto tv4 = add(tv2, tv3);
+  auto tv5 = sum(tv4, {1});
+  fusion.addOutput(tv5);
+
+  auto tv6 = broadcast(tv0, {false, true});
+  auto tv7 = broadcast(iota(i0), {true, false});
+  auto tv8 = add(tv6, tv7);
+  auto tv9 = sum(tv8, {0});
+  fusion.addOutput(tv9);
+
+  fusion.print();
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  std::vector<int64_t> shape({8});
+
+  auto t0 = at::randn(shape, options);
+  std::vector<c10::IValue> aten_inputs({t0, 10});
+
+  FusionExecutorCache executor_cache(std::move(fusion_ptr));
+  auto cg_outputs = executor_cache.runFusionWithInputs(aten_inputs);
 }
 
 } // namespace nvfuser

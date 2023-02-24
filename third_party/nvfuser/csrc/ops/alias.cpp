@@ -372,7 +372,7 @@ TensorView* transpose(TensorView* x) {
   return transpose(x, 0, 1);
 }
 
-TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
+TensorView* pad(TensorView* inp, std::vector<Val*> pad_widths) {
   const auto& inp_dom = inp->domain()->noReductions();
 
   const auto ndims = inp->domain()->noReductions().size();
@@ -388,6 +388,11 @@ TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
   std::vector<IterDomain*> root_ids(ndims);
   std::vector<IterDomain*> rfactor_ids(ndims);
 
+  // torch.pad has padding widths of inner dimensions before outer
+  // dimensions
+  std::reverse(pad_widths.begin(), pad_widths.end());
+
+  // TODO: make root domain rfactor
   int pad_idx = 0;
   for (const auto idx : c10::irange(ndims)) {
     auto consumer_root = inp_dom[idx]->cloneWithoutRFactor();
@@ -396,8 +401,8 @@ TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
       rfactor_ids.at(idx) = consumer_root;
     } else {
       // Expand the root domain and mark it as a rfactor domain
-      auto left_pad = pad_widths.at(pad_idx++);
       auto right_pad = pad_widths.at(pad_idx++);
+      auto left_pad = pad_widths.at(pad_idx++);
       auto padded_id =
           IterDomain::resize(consumer_root, left_pad, right_pad, true);
       rfactor_ids.at(idx) = padded_id;
@@ -563,24 +568,28 @@ TensorView* slice(TensorView* inp, const std::vector<Slice>& ranges) {
 
   bool needs_real_slicing = false;
   for (const auto idx : c10::irange(ndims)) {
-    auto inp_root_id = inp_dom[idx]->cloneWithoutRFactor();
-    auto out_root_id = inp_root_id->cloneWithoutRFactor();
-    root_ids.at(idx) = out_root_id;
+    auto inp_root_id = inp_dom[idx];
     auto range = normalize_slice_range(ranges.at(idx), inp_root_id->extent());
     normalized_ranges.at(idx) = range;
+    IterDomain* out_root_id = nullptr;
+    IterDomain* out_rf_id = nullptr;
     if (range.start->isZeroInt() && range.stop->sameAs(inp_root_id->extent()) &&
         range.step->isOneInt()) {
       // This dim doesn't need slicing
-      rfactor_ids.at(idx) = out_root_id;
+      out_root_id = inp_root_id->cloneWithoutRFactor();
+      out_rf_id = out_root_id;
     } else {
-      auto sliced_id = IterDomain::resize(
+      out_root_id =
+          IterDomainBuilder(inp_root_id).is_rfactor_domain(true).build();
+      out_rf_id = IterDomain::resize(
           out_root_id,
           IrBuilder::negExpr(range.start),
           sub(range.stop, inp_root_id->extent()),
           true);
-      rfactor_ids.at(idx) = sliced_id;
       needs_real_slicing = true;
     }
+    root_ids.at(idx) = out_root_id;
+    rfactor_ids.at(idx) = out_rf_id;
   }
 
   // If slicing isn't actually needed, just return a copy

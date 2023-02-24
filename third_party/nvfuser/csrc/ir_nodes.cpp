@@ -3152,9 +3152,9 @@ SliceOp::SliceOp(
     TORCH_INTERNAL_ASSERT(range.start != nullptr);
     TORCH_INTERNAL_ASSERT(range.stop != nullptr);
     TORCH_INTERNAL_ASSERT(range.step != nullptr);
-    addAttribute(range.start);
-    addAttribute(range.stop);
-    addAttribute(range.step);
+    addInput(range.start);
+    addInput(range.stop);
+    addInput(range.step);
   }
 }
 
@@ -3181,14 +3181,15 @@ std::string SliceOp::toInlineString(int indent_size) const {
 }
 
 std::vector<Slice> SliceOp::getRanges() const {
-  TORCH_INTERNAL_ASSERT(attributes_.size() % 3 == 0);
-  auto ndims = attributes_.size() / 3;
+  const int input_offset = 1;
+  TORCH_INTERNAL_ASSERT((inputs().size() - input_offset) % 3 == 0);
+  auto ndims = (inputs().size() - input_offset) / 3;
   std::vector<Slice> ranges(ndims);
   for (const auto i : c10::irange(ndims)) {
     ranges.at(i) = Slice{
-        .start = attribute(i * 3)->as<Val>(),
-        .stop = attribute(i * 3 + 1)->as<Val>(),
-        .step = attribute(i * 3 + 2)->as<Val>()};
+        .start = input(input_offset + i * 3)->as<Val>(),
+        .stop = input(input_offset + i * 3 + 1)->as<Val>(),
+        .step = input(input_offset + i * 3 + 2)->as<Val>()};
   }
   return ranges;
 }
