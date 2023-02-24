@@ -372,7 +372,7 @@ TensorView* transpose(TensorView* x) {
   return transpose(x, 0, 1);
 }
 
-TensorView* pad(TensorView* inp, std::vector<Val*> pad_widths) {
+TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
   const auto& inp_dom = inp->domain()->noReductions();
 
   const auto ndims = inp->domain()->noReductions().size();
@@ -388,25 +388,44 @@ TensorView* pad(TensorView* inp, std::vector<Val*> pad_widths) {
   std::vector<IterDomain*> root_ids(ndims);
   std::vector<IterDomain*> rfactor_ids(ndims);
 
+  // PadOp requires pad widths for all dimensions, even for non-padded
+  // ones.
+
+  std::vector<Val*> normalized_pad_widths;
+
+  // Fill zero for non padded dimensions
+  for (const auto i : c10::irange(num_non_padded_dims)) {
+    (void)i;
+    normalized_pad_widths.push_back(FusionGuard::getCurFusion()->zeroVal());
+    normalized_pad_widths.push_back(FusionGuard::getCurFusion()->zeroVal());
+  }
+
   // torch.pad has padding widths of inner dimensions before outer
   // dimensions
-  std::reverse(pad_widths.begin(), pad_widths.end());
+  for (const auto i : c10::irange(num_padded_dims)) {
+    auto left_pad = pad_widths.at(num_padded_dims * 2 - (i + 1) * 2);
+    auto right_pad = pad_widths.at(num_padded_dims * 2 - (i + 1) * 2 + 1);
+    normalized_pad_widths.push_back(left_pad);
+    normalized_pad_widths.push_back(right_pad);
+  }
 
-  // TODO: make root domain rfactor
-  int pad_idx = 0;
   for (const auto idx : c10::irange(ndims)) {
-    auto consumer_root = inp_dom[idx]->cloneWithoutRFactor();
-    root_ids.at(idx) = consumer_root;
+    auto inp_root_id = inp_dom[idx];
+    IterDomain* out_root_id = nullptr;
+    IterDomain* out_rf_id = nullptr;
     if (idx < num_non_padded_dims) {
-      rfactor_ids.at(idx) = consumer_root;
+      out_root_id = inp_root_id->cloneWithoutRFactor();
+      out_rf_id = out_root_id;
     } else {
+      out_root_id =
+          IterDomainBuilder(inp_root_id).is_rfactor_domain(true).build();
       // Expand the root domain and mark it as a rfactor domain
-      auto right_pad = pad_widths.at(pad_idx++);
-      auto left_pad = pad_widths.at(pad_idx++);
-      auto padded_id =
-          IterDomain::resize(consumer_root, left_pad, right_pad, true);
-      rfactor_ids.at(idx) = padded_id;
+      auto left_pad = normalized_pad_widths.at(idx * 2);
+      auto right_pad = normalized_pad_widths.at(idx * 2 + 1);
+      out_rf_id = IterDomain::resize(out_root_id, left_pad, right_pad, true);
     }
+    root_ids.at(idx) = out_root_id;
+    rfactor_ids.at(idx) = out_rf_id;
   }
 
   auto out = IrBuilder::create<TensorView>(
@@ -480,11 +499,12 @@ TensorView* cat(const std::vector<TensorView*>& inputs, int cat_dim) {
     std::vector<IterDomain*> rfactor_ids(ndims);
     std::vector<Val*> pad_widths(ndims * 2);
     for (const auto dim : c10::irange(ndims)) {
-      auto inp_id = inp_dom.at(dim);
-      auto root_id = inp_id->cloneWithoutRFactor();
-      root_ids.at(dim) = root_id;
+      auto inp_root_id = inp_dom.at(dim);
+      IterDomain* out_root_id = nullptr;
+      IterDomain* out_rf_id = nullptr;
       if (dim != cat_dim) {
-        rfactor_ids.at(dim) = root_id;
+        out_root_id = inp_root_id->cloneWithoutRFactor();
+        out_rf_id = out_root_id;
         pad_widths.at(dim * 2) = FusionGuard::getCurFusion()->zeroVal();
         pad_widths.at(dim * 2 + 1) = FusionGuard::getCurFusion()->zeroVal();
       } else {
@@ -503,14 +523,19 @@ TensorView* cat(const std::vector<TensorView*>& inputs, int cat_dim) {
         //
         // TODO: what to do if inp_id is not a normal iterdomain, i.e.,
         // broadcast, partial, etc?
-        right_pad = sub(right_pad, inp_id->getMaybeExpandedExtent());
-        auto resized_id =
-            IterDomain::resize(root_id, left_pad, right_pad, true);
-        rfactor_ids.at(dim) = resized_id;
+        out_root_id =
+            IterDomainBuilder(inp_root_id).is_rfactor_domain(true).build();
+        // The right pad of the last tensor is just zero
+        right_pad = input_idx < inputs.size() - 1
+            ? sub(right_pad, inp_root_id->getMaybeExpandedExtent())
+            : FusionGuard::getCurFusion()->zeroVal();
+        out_rf_id = IterDomain::resize(out_root_id, left_pad, right_pad, true);
         pad_widths.at(dim * 2) = left_pad;
         pad_widths.at(dim * 2 + 1) = right_pad;
-        left_pad = add(left_pad, inp_id->extent());
+        left_pad = add(left_pad, inp_root_id->extent());
       }
+      root_ids.at(dim) = out_root_id;
+      rfactor_ids.at(dim) = out_rf_id;
     }
 
     auto resized_inp = IrBuilder::create<TensorView>(

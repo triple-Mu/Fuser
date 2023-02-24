@@ -70,7 +70,9 @@ TORCH_CUDA_CU_API TensorView* transpose(TensorView* x);
 //! pad_widths vector specifies the padding widths of the innermost N
 //! dimensions, where N is half the size of the width vector. Padding
 //! is always done just by zero. TODO: Support other padding types
-TORCH_CUDA_CU_API TensorView* pad(TensorView* x, std::vector<Val*> pad_widths);
+TORCH_CUDA_CU_API TensorView* pad(
+    TensorView* x,
+    const std::vector<Val*>& pad_widths);
 
 //! Concatenate tensors in the given dimension
 TORCH_CUDA_CU_API TensorView* cat(

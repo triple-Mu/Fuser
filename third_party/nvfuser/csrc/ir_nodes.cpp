@@ -2158,8 +2158,9 @@ IterDomain* IterDomain::resize(
       "Non-zero stop offset not considered: ",
       in->toString());
 
-  Val* resized_id_size =
-      add(add(in->extent(), left_expansion), right_expansion);
+  Val* resized_id_size = SimplifyingIrBuilder::addExpr(
+      SimplifyingIrBuilder::addExpr(in->extent(), left_expansion),
+      right_expansion);
 
   auto resized_id =
       IterDomainBuilder(in->container()->zeroVal(), resized_id_size->as<Int>())
