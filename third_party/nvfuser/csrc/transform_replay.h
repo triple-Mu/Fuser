@@ -205,23 +205,4 @@ struct TORCH_CUDA_CU_API MostInlinedTransformPropagator
   virtual void propagateSibling(TensorView* from, TensorView* to) override;
 };
 
-class TORCH_CUDA_CU_API ResizableDomains {
- public:
-  ResizableDomains(Fusion* fusion);
-
-  bool findResizableDomains(Resize* resize);
-
-  bool isResizable(IterDomain* id) const {
-    return resizable_domains_.count(id);
-  }
-
- private:
-  ComputeAtMap& caMap();
-
- private:
-  Fusion* fusion_ = nullptr;
-  std::unordered_set<IterDomain*> resizable_domains_;
-  std::unique_ptr<ComputeAtMap> ca_map_;
-};
-
 } // namespace nvfuser

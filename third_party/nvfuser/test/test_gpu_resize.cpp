@@ -1557,29 +1557,6 @@ TEST_F(NVFuserTest, FusionResizeSoftmaxSliceScheduler2_CUDA) {
       __FILE__);
 }
 
-TEST_F(NVFuserTest, TMP4) {
-  auto fusion_ptr = std::make_unique<Fusion>();
-  auto& fusion = *fusion_ptr;
-  FusionGuard fg(fusion_ptr.get());
-
-  auto tv0 = makeSymbolicTensor(2);
-  fusion.addInput(tv0);
-
-  auto tv1 = softmax(tv0, 1);
-  auto tv2 = slice(
-      tv1,
-      {Slice(),
-       {IrBuilder::create<Int>(1),
-        sub(tv1->axis(0)->extent(), IrBuilder::create<Int>(2))}});
-  fusion.addOutput(tv2);
-
-  fusion.printMath();
-
-  Resize* resize = tv2->axis(1)->definition()->as<Resize>();
-  ResizableDomains domains(&fusion);
-  domains.findResizableDomains(resize);
-}
-
 TEST_F(NVFuserTest, TMP) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;

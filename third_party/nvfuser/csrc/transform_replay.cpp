@@ -21,6 +21,7 @@ using id_map = std::unordered_map<IterDomain*, IterDomain*>;
 
 namespace {
 
+// TODO: support resize
 class ReplaySelf : public ReplayTransformations {
  private:
   // Took a good bit of this from ReplayTransformations::handle(Split...)
@@ -262,10 +263,10 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
   if (producer == consumer) {
     return {producer->domain(), producer->nDims()};
   }
-
+#if 0
   std::cerr << "replayPasC: producer: " << producer->toString()
             << ", consumer: " << consumer->toString() << std::endl;
-
+#endif
   if (consumer_pos < 0) {
     consumer_pos += (int)consumer->nDims() + 1;
   }
@@ -488,7 +489,7 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
       new_IDs,
       producer->domain()->contiguity());
 
-  std::cerr << "replayed: " << replayed->toString() << std::endl;
+  //  std::cerr << "replayed: " << replayed->toString() << std::endl;
   return {replayed, producer_pos};
 }
 
@@ -499,10 +500,10 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
     const RootDomainMap& root_map,
     bool replay_swizzle) {
   FUSER_PERF_SCOPE("TransformReplay::replayCasP");
-
+#if 0
   std::cerr << "replayCasP: " << consumer->toString()
             << ", producer: " << producer->toString() << std::endl;
-
+#endif
   // If this is a reduction operation, we may call transform_replay on the same
   // tensor view. When this happens, just return thet target view.
   if (consumer == producer)
@@ -534,7 +535,7 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
   BestEffortReplay forward_replay = BestEffortReplay::replayCasP(
       consumer, producer, producer_pos, root_map, false, !replay_swizzle, true);
 
-  std::cerr << "replayCasP BE done\n";
+  //std::cerr << "replayCasP BE done\n";
   // Track dangling leaves which can be produced in
   // BestEffortReplay::replayCasP these don't have any equivalent in producer
   // so they're not in the map. We will simply map them to themselves so we
@@ -544,8 +545,10 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
   for (auto entry : forward_replay.getReplay()) {
     if (forwarded_replay_leaves.find(entry.second) !=
         forwarded_replay_leaves.end()) {
+#if 0
       std::cerr << entry.first->toString() << " -> " << entry.second->toString()
                 << std::endl;
+#endif
       forwarded_replay_map[entry.first] = entry.second;
       forwarded_replay_leaves.erase(entry.second);
     }
@@ -720,7 +723,7 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
       new_IDs,
       consumer->domain()->contiguity());
 
-  std::cerr << "replayCasP: replayed: " << replayed->toString() << std::endl;
+  //std::cerr << "replayCasP: replayed: " << replayed->toString() << std::endl;
   return {replayed, consumer_pos};
 }
 
@@ -1143,30 +1146,6 @@ void MostInlinedTransformPropagator::propagateSibling(
   } else if (debug) {
     std::cout << "  replay skipped" << std::endl;
   }
-}
-
-ResizableDomains::ResizableDomains(Fusion* fusion) : fusion_(fusion) {}
-
-bool ResizableDomains::findResizableDomains(Resize* resize) {
-  auto resize_in = resize->in();
-  std::cerr << "Resize in: " << resize_in->toString() << std::endl;
-  const auto consumer_map = caMap().idGraph().consumers();
-  const auto producer_map = caMap().idGraph().producers();
-  auto producer_it = producer_map.find(resize_in);
-  if (producer_it != producer_map.end()) {
-    for (auto producer : producer_it->second) {
-      std::cerr << "producer: " << producer->toString() << std::endl;
-    }
-  }
-  return false;
-}
-
-ComputeAtMap& ResizableDomains::caMap() {
-  if (ca_map_ == nullptr) {
-    ca_map_ = std::make_unique<ComputeAtMap>(fusion_);
-  }
-
-  return *ca_map_;
 }
 
 } // namespace nvfuser
