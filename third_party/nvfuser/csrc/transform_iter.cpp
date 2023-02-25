@@ -390,6 +390,10 @@ BestEffortReplay::BestEffortReplay(
     skipSwizzles(target_id2expr_map, replay_id2expr_map);
   }
 
+  if (forward_resize) {
+    skipResizes();
+  }
+
   std::string err_str(
       "Error during replay, a transformation was called that conflicts with an rfactor call.");
 
@@ -522,7 +526,7 @@ BestEffortReplay::BestEffortReplay(
         mismatched_replay_exprs = true;
       }
     }
-
+#if 0
     // Forward resize
     if (forward_resize) {
       if ((replay_expr == nullptr || !replay_expr->isA<Resize>()) &&
@@ -554,11 +558,12 @@ BestEffortReplay::BestEffortReplay(
         });
 #endif
     }
-
+#endif
     // If expressions of mapped inputs don't match, then continue to next target
     // expr
     if (mismatched_replay_exprs || replay_expr == nullptr) {
       TORCH_INTERNAL_ASSERT(!replay_has_rfactor_inp, err_str);
+#if 0      
       if (replay_expr == nullptr) {
         // std::cerr << "No replay expr found for : " << target_expr;
 
@@ -576,6 +581,7 @@ BestEffortReplay::BestEffortReplay(
           }
         }
       }
+#endif
       // std::cerr << "mismatch or not found\n";
       continue;
     }
@@ -647,11 +653,13 @@ BestEffortReplay::BestEffortReplay(
       auto t_resize = target_expr->as<Resize>();
       if (!r_resize->leftExpand()->sameAs(t_resize->leftExpand()) ||
           !r_resize->rightExpand()->sameAs(t_resize->rightExpand())) {
+#if 0
         if (forward_resize) {
           target2replay_id_map_[target_expr->as<Resize>()->out()] =
               replay_inps.at(0);
           continue;
         }
+#endif
         TORCH_INTERNAL_ASSERT(!replay_has_rfactor_inp, err_str);
         continue;
       }
@@ -690,6 +698,10 @@ BestEffortReplay::BestEffortReplay(
       // Progress through all swizzle ops if we are skipping
       //  swizzles on the mapping.
       skipSwizzles(target_id2expr_map, replay_id2expr_map);
+    }
+
+    if (forward_resize) {
+      skipResizes();
     }
   }
 }
@@ -775,11 +787,12 @@ struct ForwardingInfo {
       const TensorView* producer,
       const TensorView* consumer,
       bool forward_resize = false) {
+#if 0
     if (forward_resize) {
-      // forwardResize(producer, producer_forwarding_map);
+      forwardResize(producer, producer_forwarding_map);
       forwardResize(consumer, consumer_forwarding_map);
     }
-
+#endif
     // Either producer or consumer maps depending on operation
     std::unordered_map<IterDomain*, IterDomain*>* active_forwarding_map =
         nullptr;
@@ -1120,7 +1133,7 @@ BestEffortReplay BestEffortReplay::replayPasC(
   const auto c2p_root_map = root_map.mapConsumerToProducer(
       consumer->domain(), producer->domain(), consumer_CA_root_ids);
 
-  ForwardingInfo forwarding_info(producer, consumer);
+  ForwardingInfo forwarding_info(producer, consumer, forward_resize);
 
   // Instead of replaying from the root, lets try to play forward the history
   // of producer if they match ops on consumer. Enforce if we modify an
@@ -1178,6 +1191,49 @@ void BestEffortReplay::skipSwizzles(
         }
         break;
       }
+    }
+  }
+}
+
+void BestEffortReplay::skipResizes() {
+  auto isResizeInput = [](IterDomain* id) -> bool {
+    return id->uses().size() == 1 && id->uses().front()->isA<Resize>();
+  };
+
+  bool updated = true;
+
+  while (updated) {
+    updated = false;
+    for (auto it : target2replay_id_map_) {
+      auto target_id = it.first;
+      auto new_target_id = target_id;
+      auto replay_id = it.second;
+      auto new_replay_id = replay_id;
+      if (isResizeInput(target_id)) {
+        new_target_id = target_id->uses().front()->as<Resize>()->out();
+      }
+      if (isResizeInput(replay_id)) {
+        new_replay_id = replay_id->uses().front()->as<Resize>()->out();
+      }
+
+      if (new_target_id == target_id && new_replay_id == replay_id) {
+        continue;
+      }
+
+      target2replay_id_map_.erase(target_id);
+      TORCH_INTERNAL_ASSERT(
+          target2replay_id_map_
+              .insert(std::make_pair(new_target_id, new_replay_id))
+              .second,
+          "Unexpected replay leaf");
+      // Progress the leaf ids if the replay is updated
+      if (replay_id != new_replay_id &&
+          leaf_ids_.find(replay_id) != leaf_ids_.end()) {
+        leaf_ids_.erase(replay_id);
+        leaf_ids_[new_replay_id] = counter++;
+      }
+      updated = true;
+      break;
     }
   }
 }

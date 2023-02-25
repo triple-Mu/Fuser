@@ -340,7 +340,7 @@ void IterDomainGraph::build(Fusion* fusion) {
     const auto& domain = tv->domain()->domain();
     auto all_ids = ir_utils::allIDsOf(tv);
 
-    std::cerr << "TV: " << tv->toString() << std::endl;
+    // std::cerr << "TV: " << tv->toString() << std::endl;
 
     // Check is this domain is a consumer of a view-like operation
     bool view_like_domain = tv->domain()->hasViewLikeRFactor();
@@ -454,10 +454,16 @@ void IterDomainGraph::build(Fusion* fusion) {
             BestEffortReplay::replayPasC(p_tv, c_tv, -1, pairwise_map)
                 .getIterDomainEquivalence();
 
+        if (c_tv->name() == 3 && p_tv->name() == 2) {
+          // std::cerr << "BestEffort replay for resize\n";
+        }
         const auto permissive_resize_disjoint_sets =
             BestEffortReplay::replayPasC(
                 p_tv, c_tv, -1, pairwise_map, true, true, true)
                 .getIterDomainEquivalence();
+        if (c_tv->name() == 3 && p_tv->name() == 2) {
+          // std::cerr << "BestEffort replay for resize done\n";
+        }
 
         // For exact mapings do not map any broadcast dimensions to
         // non-broadcast dimensions. Prevent any broadcasted axes being mapped

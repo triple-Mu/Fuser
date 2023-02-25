@@ -2273,7 +2273,8 @@ void propagateViewTransforms(Fusion* fusion, const ComputeAtMap& ca_map) {
   std::unordered_set<std::shared_ptr<VectorOfUniqueEntries<IterDomain*>>>
       transformed_disjoint_sets;
 
-  std::cerr << "Propagating view trans\n";
+  std::cout << "Propagating view trans\n";
+  fusion->printMath();
   // If iter domains are involved in any transformation from root domains to
   // rfactor domains they should be considered "contaminated".
   for (auto tv : ir_utils::allTvs(fusion)) {
@@ -2350,6 +2351,9 @@ void propagateViewTransforms(Fusion* fusion, const ComputeAtMap& ca_map) {
     //! Propagate current transformations on from_tv to all graphs
     transformPropagateToAllFrom(tv, old2new.size());
   }
+
+  std::cout << "View prop done\n";
+  fusion->printMath();
 }
 
 bool isFastestDimReduction(TensorView* tv) {

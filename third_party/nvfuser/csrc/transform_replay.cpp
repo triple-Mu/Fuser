@@ -263,6 +263,9 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
     return {producer->domain(), producer->nDims()};
   }
 
+  std::cerr << "replayPasC: producer: " << producer->toString()
+            << ", consumer: " << consumer->toString() << std::endl;
+
   if (consumer_pos < 0) {
     consumer_pos += (int)consumer->nDims() + 1;
   }
@@ -287,7 +290,13 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
   // the inputs of the swizzles instead of the outputs, and therefore should not
   // skip swizzles in here.
   auto forward_replay = BestEffortReplay::replayPasC(
-      producer, consumer, consumer_pos, root_map, false, !replay_swizzle);
+      producer,
+      consumer,
+      consumer_pos,
+      root_map,
+      false,
+      !replay_swizzle,
+      !replay_resize);
 
   // Make a new map based on all the leaves resulting from best effort replay
   id_map forwarded_replay_map;
@@ -300,21 +309,12 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
     }
   }
 
-  // If this consumer is the only consumer of the producer, it's
-  // always safe to propagate resize
-  const auto sole_consumer = producer->uses().size() == 1;
-
-  if (producer->name() == 2) {
-    std::cerr << "Sole consumer: " << sole_consumer
-              << ", producer: " << producer->toString() << std::endl;
-  }
-
   // Replay producer dimensions.
   ReplayTransformations replay_PasC(
       target_consumer_ids,
       forwarded_replay_map,
       false,
-      replay_resize || sole_consumer,
+      replay_resize,
       replay_swizzle);
 
   auto producer_leaf_ids(replay_PasC.getUnorderedLeafIDs());
@@ -488,6 +488,7 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
       new_IDs,
       producer->domain()->contiguity());
 
+  std::cerr << "replayed: " << replayed->toString() << std::endl;
   return {replayed, producer_pos};
 }
 
