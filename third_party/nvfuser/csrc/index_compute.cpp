@@ -1975,14 +1975,16 @@ std::vector<Val*> Index::getProducerRootIndices(
 
 std::vector<Val*> Index::getGlobalConsumerStridedIndices(
     const TensorView* consumer_tv,
-    const std::vector<kir::ForLoop*>& loops) {
+    const std::vector<kir::ForLoop*>& loops,
+    const std::unordered_map<int, Val*>& override_index) {
   FUSER_PERF_SCOPE("GpuLower::Lower::getGlobalConsumerIndex");
 
   auto index_from_id_graph = getTensorIndexFromIdGraph(loops, consumer_tv);
   auto consumer_indexing = index_from_id_graph.index;
   auto strides = getStrides(consumer_tv);
-  auto root_inds =
-      getConsumerRootIndices(consumer_tv, loops, index_from_id_graph);
+  // if we need to override index, we need to generate the index from each
+  // root axis firstly.
+  auto root_inds = getConsumerRootIndices(consumer_tv, loops, index_from_id_graph);
 
   // Global striding
   auto vectorize_shift =
@@ -1990,6 +1992,10 @@ std::vector<Val*> Index::getGlobalConsumerStridedIndices(
   std::vector<Val*> strided_inds(
       root_inds.size(), GpuLower::current()->kernel()->zeroVal());
   for (const auto i : c10::irange(root_inds.size())) {
+    auto override_it = override_index.find(i);
+    if (override_it != override_index.end()) {
+      root_inds[i] = override_it->second;
+    }
     if (root_inds[i]->isZeroInt()) {
       continue;
     } else {
@@ -2013,12 +2019,18 @@ std::vector<Val*> Index::getGlobalConsumerStridedIndices(
 // Consumer index for either shared or local memory
 std::vector<Val*> Index::getNonGlobalConsumerStridedIndices(
     const TensorView* consumer_tv,
-    const std::vector<kir::ForLoop*>& loops) {
+    const std::vector<kir::ForLoop*>& loops,
+    const std::unordered_map<IterDomain*, Val*>& override_index) {
   const auto gpu_lower = GpuLower::current();
 #if 0
   std::cerr << "getNonGlobalConsumerStridedIndices: " << consumer_tv->toString()
             << std::endl;
 #endif
+
+  // At now, only ScatterOp set override_index, and the output of ScatterOp
+  // is on global memory, so in this method, the override_index must be empty.
+  TORCH_INTERNAL_ASSERT(override_index.size() == 0);
+
   auto consumer_indexing_from_idgraph = getTensorIndexFromIdGraph(
       loops,
       consumer_tv,
@@ -2215,6 +2227,7 @@ kir::TensorIndex* Index::getProducerIndex(
 Val* Index::getConsumerStridedIndices(
     TensorView* consumer,
     const std::vector<kir::ForLoop*>& loops,
+    const std::unordered_map<int, Val*>& override_index,
     bool cvta_smem_address) {
   FUSER_PERF_SCOPE("GpuLower::Lower::Index::getConsumerStridedIndices");
   if (consumer->domain()->noReductions().size() == 0) {
@@ -2222,7 +2235,8 @@ Val* Index::getConsumerStridedIndices(
   }
 
   if (consumer->getMemoryType() == MemoryType::Global) {
-    return sumVals(getGlobalConsumerStridedIndices(consumer, loops));
+    return sumVals(
+        getGlobalConsumerStridedIndices(consumer, loops, override_index));
   } else {
     auto index = sumVals(getNonGlobalConsumerStridedIndices(consumer, loops));
     if (cvta_smem_address && consumer->getMemoryType() == MemoryType::Shared) {
@@ -2243,8 +2257,10 @@ Val* Index::getConsumerStridedIndices(
 kir::TensorIndex* Index::getConsumerIndex(
     TensorView* consumer,
     const std::vector<kir::ForLoop*>& loops,
+    const std::unordered_map<int, Val*>& override_index,
     bool cvta_smem_address) {
-  auto index = getConsumerStridedIndices(consumer, loops, cvta_smem_address);
+  auto index = getConsumerStridedIndices(
+      consumer, loops, override_index, cvta_smem_address);
   index = GpuLower::current()->commonScalarMap().hoistScalar(index, loops);
   return SimplifyingIrBuilder::create<kir::TensorIndex>(consumer, index);
 }
@@ -2783,7 +2799,7 @@ bool canOmitStopPredicate(
   // Stop predicate: stop_index + stop_offset < extent, where
   // stop_index ranges from 0 to (extent + halo), so this can be
   // omitted if extent + halo + stop_offset < extent, i.e., halo +
-  // stop_offset <= 0.
+  // stop_offset < 0.
 
   auto stop_offset_val = stop_offset->as<Int>()->value();
 
@@ -2801,7 +2817,7 @@ bool canOmitStopPredicate(
       ? gpu_lower->haloInfo()->getRootAxisInfo(contig_id).width()
       : 0;
 
-  if (halo_ext + stop_offset_val.value() > 0) {
+  if (halo_ext + stop_offset_val.value() >= 0) {
     return false;
   }
 

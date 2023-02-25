@@ -1015,7 +1015,10 @@ std::vector<std::pair<TensorView*, TensorView*>> cacheAndForkOutputs(
   std::vector<std::pair<TensorView*, TensorView*>> cached_outputs;
   // For intermediate outputs, apply cacheFork
   for (auto output : ir_utils::filterByType<TensorView>(fusion->outputs())) {
-    if (output->definition() == nullptr) {
+    if (output->definition() == nullptr ||
+        // the output of ScatterOp must on the global memory due to the random
+        // or atomic access.
+        output->definition()->isA<ScatterOp>()) {
       continue;
     }
     if (!output->uses().empty()) {
@@ -2270,8 +2273,6 @@ void propagateViewTransforms(Fusion* fusion, const ComputeAtMap& ca_map) {
   std::unordered_set<std::shared_ptr<VectorOfUniqueEntries<IterDomain*>>>
       transformed_disjoint_sets;
 
-  std::cout << "Propagating view trans\n";
-  fusion->printMath();
   // If iter domains are involved in any transformation from root domains to
   // rfactor domains they should be considered "contaminated".
   for (auto tv : ir_utils::allTvs(fusion)) {
@@ -2348,9 +2349,6 @@ void propagateViewTransforms(Fusion* fusion, const ComputeAtMap& ca_map) {
     //! Propagate current transformations on from_tv to all graphs
     transformPropagateToAllFrom(tv, old2new.size());
   }
-
-  std::cout << "View prop done\n";
-  fusion->printMath();
 }
 
 bool isFastestDimReduction(TensorView* tv) {
