@@ -14,7 +14,7 @@
 namespace nvfuser {
 
 // Simple pad test
-TEST_F(NVFuserTest, FusionPad1_CUDA) {
+TEST_F(NVFuserTest, FusionResizePad1_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -42,7 +42,7 @@ TEST_F(NVFuserTest, FusionPad1_CUDA) {
 }
 
 // pad + split
-TEST_F(NVFuserTest, FusionPad2_CUDA) {
+TEST_F(NVFuserTest, FusionResizePad2_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -72,7 +72,7 @@ TEST_F(NVFuserTest, FusionPad2_CUDA) {
 }
 
 // pad, merge + split, inlineMost
-TEST_F(NVFuserTest, FusionPad3_CUDA) {
+TEST_F(NVFuserTest, FusionResizePad3_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -97,6 +97,11 @@ TEST_F(NVFuserTest, FusionPad3_CUDA) {
 
   inlineMost();
 
+  // TransformPropagator and inlineMost do not inline tv2, so it can't
+  // be on Local memory. It should be possible to expand tv2 such that
+  // it has the same extent as tv3, allowing it to be inlined.
+  tv2->setMemoryType(MemoryType::Shared);
+
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
 
@@ -115,7 +120,7 @@ TEST_F(NVFuserTest, FusionPad3_CUDA) {
 }
 
 // pad + parallelization
-TEST_F(NVFuserTest, FusionPad4_CUDA) {
+TEST_F(NVFuserTest, FusionResizePad4_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -145,7 +150,7 @@ TEST_F(NVFuserTest, FusionPad4_CUDA) {
 }
 
 // pad + parallelization + RAW sync
-TEST_F(NVFuserTest, FusionPad5_CUDA) {
+TEST_F(NVFuserTest, FusionResizePad5_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -194,7 +199,7 @@ TEST_F(NVFuserTest, FusionPad5_CUDA) {
 }
 
 // pad + merge + split parallelization
-TEST_F(NVFuserTest, FusionPad6_CUDA) {
+TEST_F(NVFuserTest, FusionResizePad6_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -242,7 +247,7 @@ TEST_F(NVFuserTest, FusionPad6_CUDA) {
 
 // pad + unswitch. Having different extents in an unswitched loop nest
 // needs a special care (see UnrollPass::canOmitElseClause)
-TEST_F(NVFuserTest, FusionPad7_CUDA) {
+TEST_F(NVFuserTest, FusionResizePad7_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -270,6 +275,8 @@ TEST_F(NVFuserTest, FusionPad7_CUDA) {
 
   scheduler_utils::parallelizeAllLike(tv3);
 
+  scheduler_utils::promoteProducerMemoryTypesOfResizedTensors(&fusion);
+
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
 
@@ -290,7 +297,7 @@ TEST_F(NVFuserTest, FusionPad7_CUDA) {
 // different transform propagator.
 #if 0
 // Stencil-like pattern
-TEST_F(NVFuserTest, FusionPad8_CUDA) {
+TEST_F(NVFuserTest, FusionResizePad8_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -339,7 +346,7 @@ TEST_F(NVFuserTest, FusionPad8_CUDA) {
 }
 #endif
 
-TEST_F(NVFuserTest, FusionPadScheduler1_CUDA) {
+TEST_F(NVFuserTest, FusionResizePadScheduler1_CUDA) {
   auto fusion = std::make_unique<Fusion>();
   FusionGuard fg(fusion.get());
 
@@ -365,7 +372,7 @@ TEST_F(NVFuserTest, FusionPadScheduler1_CUDA) {
   TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
-TEST_F(NVFuserTest, FusionPadScheduler2_CUDA) {
+TEST_F(NVFuserTest, FusionResizePadScheduler2_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;
   FusionGuard fg(fusion_ptr.get());
@@ -408,7 +415,7 @@ TEST_F(NVFuserTest, FusionPadScheduler2_CUDA) {
 // Disabled due to the same reason as Pad8
 #if 0
 // Auto scheduled version of Pad8
-TEST_F(NVFuserTest, FusionPadScheduler3_CUDA) {
+TEST_F(NVFuserTest, FusionResizePadScheduler3_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;
   FusionGuard fg(fusion_ptr.get());
@@ -444,7 +451,7 @@ TEST_F(NVFuserTest, FusionPadScheduler3_CUDA) {
 #endif
 
 // Trivial cat
-TEST_F(NVFuserTest, FusionCat1_CUDA) {
+TEST_F(NVFuserTest, FusionResizeCat1_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -477,7 +484,7 @@ TEST_F(NVFuserTest, FusionCat1_CUDA) {
 }
 
 // Trivial 2D inner cat
-TEST_F(NVFuserTest, FusionCat2_CUDA) {
+TEST_F(NVFuserTest, FusionResizeCat2_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -510,7 +517,7 @@ TEST_F(NVFuserTest, FusionCat2_CUDA) {
 }
 
 // Trivial 2D outer cat
-TEST_F(NVFuserTest, FusionCat3_CUDA) {
+TEST_F(NVFuserTest, FusionResizeCat3_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -551,7 +558,7 @@ TEST_F(NVFuserTest, FusionCat3_CUDA) {
 }
 
 // Cat + merge + split + parallelization + inlineMost
-TEST_F(NVFuserTest, FusionCat4_CUDA) {
+TEST_F(NVFuserTest, FusionResizeCat4_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -595,7 +602,7 @@ TEST_F(NVFuserTest, FusionCat4_CUDA) {
 }
 
 // Cat + arith op
-TEST_F(NVFuserTest, FusionCat5_CUDA) {
+TEST_F(NVFuserTest, FusionResizeCat5_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -644,7 +651,7 @@ TEST_F(NVFuserTest, FusionCat5_CUDA) {
 }
 
 // Cat 3 tensors
-TEST_F(NVFuserTest, FusionCat6_CUDA) {
+TEST_F(NVFuserTest, FusionResizeCat6_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -691,7 +698,7 @@ TEST_F(NVFuserTest, FusionCat6_CUDA) {
 }
 
 // Cat many tensors
-TEST_F(NVFuserTest, FusionCat7_CUDA) {
+TEST_F(NVFuserTest, FusionResizeCat7_CUDA) {
   int num_tensors_to_concat = 10;
 
   for (int concat_dim : {0, 1}) {
@@ -746,7 +753,7 @@ TEST_F(NVFuserTest, FusionCat7_CUDA) {
 }
 
 // Auto scheduled version of Cat1
-TEST_F(NVFuserTest, FusionCatScheduler1_CUDA) {
+TEST_F(NVFuserTest, FusionResizeCatScheduler1_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;
   FusionGuard fg(fusion_ptr.get());
@@ -779,7 +786,7 @@ TEST_F(NVFuserTest, FusionCatScheduler1_CUDA) {
 }
 
 // Auto scheduled version of Cat5
-TEST_F(NVFuserTest, FusionCatScheduler2_CUDA) {
+TEST_F(NVFuserTest, FusionResizeCatScheduler2_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;
   FusionGuard fg(fusion_ptr.get());
@@ -822,7 +829,7 @@ TEST_F(NVFuserTest, FusionCatScheduler2_CUDA) {
 }
 
 // Auto scheduled version of Cat6
-TEST_F(NVFuserTest, FusionCatScheduler3_CUDA) {
+TEST_F(NVFuserTest, FusionResizeCatScheduler3_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;
   FusionGuard fg(fusion_ptr.get());
@@ -858,7 +865,7 @@ TEST_F(NVFuserTest, FusionCatScheduler3_CUDA) {
 }
 
 // Trivial slice
-TEST_F(NVFuserTest, FusionSlice1_CUDA) {
+TEST_F(NVFuserTest, FusionResizeSlice1_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -889,7 +896,7 @@ TEST_F(NVFuserTest, FusionSlice1_CUDA) {
 }
 
 // Split a tensor to half and add them up
-TEST_F(NVFuserTest, FusionSlice2_CUDA) {
+TEST_F(NVFuserTest, FusionResizeSlice2_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -900,15 +907,11 @@ TEST_F(NVFuserTest, FusionSlice2_CUDA) {
   auto tv0 = makeConcreteTensor(shape);
   fusion.addInput(tv0);
 
-  // This doesn't work as it results in float
-  // auto mid_point = div(tv0->axis(1)->extent(),
-  // IrBuilder::create<Int>(2));
-
-  auto mid_point =
-      IrBuilder::divExpr(tv0->axis(1)->extent(), IrBuilder::create<Int>(2));
-
-  auto tv1 = slice(tv0, {Slice(), {IrBuilder::create<Int>(0), mid_point}});
-  auto tv2 = slice(tv0, {Slice(), {mid_point}});
+  auto tv1 = slice(
+      tv0,
+      {Slice(),
+       {IrBuilder::create<Int>(0), IrBuilder::create<Int>(shape[1] / 2)}});
+  auto tv2 = slice(tv0, {Slice(), {IrBuilder::create<Int>(shape[1] / 2)}});
   auto tv3 = add(tv1, tv2);
   fusion.addOutput(tv3);
 
@@ -934,7 +937,7 @@ TEST_F(NVFuserTest, FusionSlice2_CUDA) {
 }
 
 // "Trivial" slice is converted to Set
-TEST_F(NVFuserTest, FusionSlice3_CUDA) {
+TEST_F(NVFuserTest, FusionResizeSlice3_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -956,7 +959,7 @@ TEST_F(NVFuserTest, FusionSlice3_CUDA) {
 }
 
 // Partition an input, reduce each and concatenate them
-TEST_F(NVFuserTest, FusionSlice4_CUDA) {
+TEST_F(NVFuserTest, FusionResizeSlice4_CUDA) {
   Fusion fusion;
   FusionGuard fg(&fusion);
 
@@ -1036,7 +1039,7 @@ TEST_F(NVFuserTest, FusionSlice4_CUDA) {
 }
 
 // Multiple slices of the same tensor with the same arguments
-TEST_F(NVFuserTest, FusionSlice5_CUDA) {
+TEST_F(NVFuserTest, FusionResizeSlice5_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;
   FusionGuard fg(fusion_ptr.get());
@@ -1087,49 +1090,17 @@ TEST_F(NVFuserTest, FusionSlice5_CUDA) {
   auto t1 = t0.index(
       {at::indexing::Slice(0, at::indexing::None),
        at::indexing::Slice(1, shape[1] - 1)});
-  auto t2 = t1.sum({1});
+  auto t2 = t1.to(at::kDouble).sum({1});
   auto t3 = t0.index(
       {at::indexing::Slice(0, at::indexing::None),
        at::indexing::Slice(1, shape[1] - 1)});
-  auto t4 = t3.sum({1});
+  auto t4 = t3.to(at::kDouble).sum({1});
 
   testValidate(&fusion, cg_outputs, aten_inputs, {t2, t4}, __LINE__, __FILE__);
 }
 
-// Multiple slices of the same tensor with different
-// arguments. TransformPropagator should fail.
-TEST_F(NVFuserTest, FusionSlice6_CUDA) {
-  auto fusion_ptr = std::make_unique<Fusion>();
-  auto& fusion = *fusion_ptr;
-  FusionGuard fg(fusion_ptr.get());
-
-  auto tv0 = makeSymbolicTensor(2);
-  fusion.addInput(tv0);
-
-  auto tv1 = slice(
-      tv0,
-      {Slice(),
-       {IrBuilder::create<Int>(1),
-        sub(tv0->axis(1)->extent(), IrBuilder::create<Int>(1))}});
-  fusion.addOutput(tv1);
-  auto tv2 = slice(
-      tv0,
-      {Slice(),
-       {IrBuilder::create<Int>(2),
-        sub(tv0->axis(1)->extent(), IrBuilder::create<Int>(1))}});
-  fusion.addOutput(tv2);
-
-  tv1->split(1, 4);
-  TransformPropagator propagator(tv1);
-  MaxRootDomainInfoSpanningTree tree(tv1);
-  EXPECT_THAT(
-      [&]() { tree.traverse(&propagator); },
-      ::testing::ThrowsMessage<c10::Error>(
-          ::testing::HasSubstr("replay_has_rfactor_inp")));
-}
-
 // Auto scheduled version of Slice1
-TEST_F(NVFuserTest, FusionSliceScheduler1_CUDA) {
+TEST_F(NVFuserTest, FusionResizeSliceScheduler1_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;
   FusionGuard fg(fusion_ptr.get());
@@ -1159,47 +1130,7 @@ TEST_F(NVFuserTest, FusionSliceScheduler1_CUDA) {
   TORCH_CHECK(ref.equal(cg_outputs[0]));
 }
 
-// Auto scheduled version of Slice5. Currently segmented to two kernels.
-TEST_F(NVFuserTest, FusionSliceScheduler2_CUDA) {
-  auto fusion_ptr = std::make_unique<Fusion>();
-  auto& fusion = *fusion_ptr;
-  FusionGuard fg(fusion_ptr.get());
-
-  auto tv0 = makeSymbolicTensor(2);
-  fusion.addInput(tv0);
-
-  auto tv1 = slice(
-      tv0,
-      {Slice(),
-       {IrBuilder::create<Int>(1),
-        sub(tv0->axis(1)->extent(), IrBuilder::create<Int>(1))}});
-  auto tv2 = sum(tv1, {1});
-  fusion.addOutput(tv2);
-  auto tv3 = slice(
-      tv0,
-      {Slice(),
-       {IrBuilder::create<Int>(1),
-        sub(tv0->axis(1)->extent(), IrBuilder::create<Int>(1))}});
-  auto tv4 = sum(tv3, {1});
-  fusion.addOutput(tv4);
-
-  std::vector<int64_t> shape({11, 1000});
-  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
-  at::manual_seed(0);
-  auto t0 = at::randn(shape, options);
-  std::vector<c10::IValue> aten_inputs({t0});
-
-  FusionExecutorCache executor_cache(std::move(fusion_ptr));
-  executor_cache.runFusionWithInputs(aten_inputs);
-
-  auto runtime = executor_cache.getMostRecentKernelRuntime();
-  TORCH_CHECK(runtime->isSegmented(), "Expected to segment the fusion");
-  auto num_segments = runtime->fusionSegments()->groups().size();
-  TORCH_CHECK(
-      num_segments == 2, "Expected to segment the fusion to two kernels");
-}
-
-TEST_F(NVFuserTest, FusionPadReduceScheduler1_CUDA) {
+TEST_F(NVFuserTest, FusionResizePadReduceScheduler1_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;
   FusionGuard fg(fusion_ptr.get());
@@ -1248,7 +1179,7 @@ TEST_F(NVFuserTest, FusionPadReduceScheduler1_CUDA) {
       __FILE__);
 }
 
-TEST_F(NVFuserTest, FusionSliceReduceScheduler1_CUDA) {
+TEST_F(NVFuserTest, FusionResizeSliceReduceScheduler1_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;
   FusionGuard fg(fusion_ptr.get());
@@ -1302,7 +1233,7 @@ TEST_F(NVFuserTest, FusionSliceReduceScheduler1_CUDA) {
 // Multiple slice+reduction. Different slices. Should be segmented to
 // separate kernels as the reduction scheduler doesn't accept
 // different rfactor tensors.
-TEST_F(NVFuserTest, FusionSliceReduceScheduler2_CUDA) {
+TEST_F(NVFuserTest, FusionResizeSliceReduceScheduler2_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;
   FusionGuard fg(fusion_ptr.get());
@@ -1407,20 +1338,14 @@ TEST_F(NVFuserTest, FusionSliceReduceScheduler3_CUDA) {
   FusionExecutorCache executor_cache(std::move(fusion_ptr));
   auto cg_outputs = executor_cache.runFusionWithInputs(aten_inputs);
 
-  auto runtime = executor_cache.getMostRecentKernelRuntime();
-  TORCH_CHECK(runtime->isSegmented(), "Expected to segment the fusion");
-  auto num_segments = runtime->fusionSegments()->groups().size();
-  TORCH_CHECK(
-      num_segments == 2, "Expected to segment the fusion to two kernels");
-
   auto t1 = t0.index(
       {at::indexing::Slice(0, at::indexing::None),
        at::indexing::Slice(slice_inputs[0], slice_inputs[1])});
-  auto t2 = t1.sum({1});
+  auto t2 = t1.to(at::kDouble).sum({1});
   auto t3 = t0.index(
       {at::indexing::Slice(0, at::indexing::None),
        at::indexing::Slice(slice_inputs[0], slice_inputs[1])});
-  auto t4 = t3.sum({1});
+  auto t4 = t3.to(at::kDouble).sum({1});
 
   testValidate(
       executor_cache.fusion(),
@@ -1431,7 +1356,7 @@ TEST_F(NVFuserTest, FusionSliceReduceScheduler3_CUDA) {
       __FILE__);
 }
 
-TEST_F(NVFuserTest, FusionCatReduceScheduler1_CUDA) {
+TEST_F(NVFuserTest, FusionResizeCatReduceScheduler1_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;
   FusionGuard fg(fusion_ptr.get());
@@ -1469,7 +1394,7 @@ TEST_F(NVFuserTest, FusionCatReduceScheduler1_CUDA) {
       __FILE__);
 }
 
-TEST_F(NVFuserTest, FusionCatSoftmaxScheduler1_CUDA) {
+TEST_F(NVFuserTest, FusionResizeCatSoftmaxScheduler1_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;
   FusionGuard fg(fusion_ptr.get());
@@ -1508,7 +1433,7 @@ TEST_F(NVFuserTest, FusionCatSoftmaxScheduler1_CUDA) {
       __FILE__);
 }
 
-TEST_F(NVFuserTest, FusionReductionSliceScheduler1_CUDA) {
+TEST_F(NVFuserTest, FusionResizeReductionSliceScheduler1_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;
   FusionGuard fg(fusion_ptr.get());
@@ -1547,7 +1472,7 @@ TEST_F(NVFuserTest, FusionReductionSliceScheduler1_CUDA) {
 }
 
 // Softmax followed by slicing of a non-normalized dimension
-TEST_F(NVFuserTest, FusionSoftmaxSliceScheduler1_CUDA) {
+TEST_F(NVFuserTest, FusionResizeSoftmaxSliceScheduler1_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;
   FusionGuard fg(fusion_ptr.get());
@@ -1589,7 +1514,7 @@ TEST_F(NVFuserTest, FusionSoftmaxSliceScheduler1_CUDA) {
 }
 
 // Softmax followed by slicing of a normalized dimension
-TEST_F(NVFuserTest, FusionSoftmaxSliceScheduler2_CUDA) {
+TEST_F(NVFuserTest, FusionResizeSoftmaxSliceScheduler2_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;
   FusionGuard fg(fusion_ptr.get());
