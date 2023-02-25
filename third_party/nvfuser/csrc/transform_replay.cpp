@@ -535,11 +535,11 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
   BestEffortReplay forward_replay = BestEffortReplay::replayCasP(
       consumer, producer, producer_pos, root_map, false, !replay_swizzle, true);
 
-  //std::cerr << "replayCasP BE done\n";
-  // Track dangling leaves which can be produced in
-  // BestEffortReplay::replayCasP these don't have any equivalent in producer
-  // so they're not in the map. We will simply map them to themselves so we
-  // don't lose them.
+  // std::cerr << "replayCasP BE done\n";
+  //  Track dangling leaves which can be produced in
+  //  BestEffortReplay::replayCasP these don't have any equivalent in producer
+  //  so they're not in the map. We will simply map them to themselves so we
+  //  don't lose them.
   id_map forwarded_replay_map;
   auto forwarded_replay_leaves = forward_replay.getUnorderedLeafIDs();
   for (auto entry : forward_replay.getReplay()) {
@@ -723,7 +723,7 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
       new_IDs,
       consumer->domain()->contiguity());
 
-  //std::cerr << "replayCasP: replayed: " << replayed->toString() << std::endl;
+  // std::cerr << "replayCasP: replayed: " << replayed->toString() << std::endl;
   return {replayed, consumer_pos};
 }
 

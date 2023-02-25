@@ -71,7 +71,6 @@ void DomainMap::eraseIfInputMappedThroughRFactorDomain(
     std::unordered_set<IterDomain*>& in_concrete_ids,
     IterDomain* id) const {
   for (auto view : tvs_with_rfactor_) {
-    std::cerr << "view_tv: " << view->toString() << std::endl;
     // Find any ID in view rfactor domain that is mapped to output ID
     auto view_rfactor_id = anyMapped(view->getRFactorDomain(), id);
     if (view_rfactor_id == nullptr) {

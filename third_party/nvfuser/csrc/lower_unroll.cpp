@@ -321,25 +321,13 @@ bool UnrollPass::canOmitElseClause(kir::ForLoop* fl) {
         pad_exprs.end(),
         std::back_inserter(pad_inputs),
         [](Expr* pad) { return pad->input(0); });
-    std::cerr << "Pad inputs: "
-              << toDelimitedString(pad_inputs.begin(), pad_inputs.end())
-              << std::endl;
-    std::cerr << "all exprs: "
-              << toDelimitedString(
-                     all_exprs_inside_loop_nest.begin(),
-                     all_exprs_inside_loop_nest.end())
-              << std::endl;
     auto pad_dep_exprs = DependencyCheck::getAllExprsBetween(
         {fl->fusion()->inputs().begin(), fl->fusion()->inputs().end()},
         pad_inputs);
-    std::cerr << "dep exprs: "
-              << toDelimitedString(pad_dep_exprs.begin(), pad_dep_exprs.end())
-              << std::endl;
     if (std::any_of(
             pad_dep_exprs.begin(), pad_dep_exprs.end(), [&](auto pad_dep_expr) {
               return all_exprs_inside_loop_nest.count(pad_dep_expr);
             })) {
-      std::cerr << "Else needed due to padding\n";
       return false;
     }
   }
