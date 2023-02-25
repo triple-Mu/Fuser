@@ -2395,60 +2395,105 @@ std::vector<TensorView*> getResizedTensors(Fusion* fusion) {
   return resized_tensors;
 }
 
+void prepareForMemoryTypePromotion(Fusion* fusion) {
+  auto resized_tensors = getResizedTensors(fusion);
+  std::unordered_set<TensorView*> cached;
+  for (auto resized_tensor : resized_tensors) {
+    for (auto producer : ir_utils::producerTvsOf(resized_tensor)) {
+      if (cached.count(producer) != 0) {
+        continue;
+      }
+      producer->cacheAfter();
+      cached.insert(producer);
+    }
+  }
+}
+
 void promoteProducerMemoryTypesOfResizedTensors(Fusion* fusion) {
   auto resized_tensors = getResizedTensors(fusion);
-  fusion->printMath();
+
+  auto memoryTypeToInt = [](MemoryType mt1) -> int {
+    switch (mt1) {
+      case MemoryType::Local:
+        return 1;
+      case MemoryType::Shared:
+        return 2;
+      case MemoryType::Global:
+        return 3;
+      default:
+        TORCH_INTERNAL_ASSERT(false);
+    }
+  };
+
+  std::unordered_map<TensorView*, MemoryType> tvs_to_promote;
+
+  auto setPromotion = [&](TensorView* tv, MemoryType m_type) {
+    // Initialize the memory type with the current type
+    tvs_to_promote.emplace(tv, tv->getMemoryType());
+
+    if (memoryTypeToInt(m_type) > memoryTypeToInt(tvs_to_promote.at(tv))) {
+      std::cerr << "Will promote " << tv->toString() << " to " << m_type
+                << std::endl;
+      tvs_to_promote[tv] = m_type;
+    }
+  };
+
   for (auto resized_tensor : resized_tensors) {
     std::cerr << "resized tensor: " << resized_tensor->toString() << std::endl;
     for (auto producer : ir_utils::producerTvsOf(resized_tensor)) {
-      auto consumers = ir_utils::consumerTvsOf(producer);
-      for (auto consumer : consumers) {
-        auto c2p_map = BestEffortReplay(
-                           producer->domain()->domain(),
-                           consumer->domain()->domain(),
-                           PairwiseRootDomainMap(producer, consumer, true)
-                               .mapConsumerToProducer(
-                                   consumer->domain(), producer->domain()))
-                           .getReplay();
+      auto c2p_map = BestEffortReplay(
+                         producer->domain()->domain(),
+                         resized_tensor->domain()->domain(),
+                         PairwiseRootDomainMap(producer, resized_tensor, true)
+                             .mapConsumerToProducer(
+                                 resized_tensor->domain(), producer->domain()))
+                         .getReplay();
 
-        for (const auto i : c10::irange(
-                 producer->nDims() - producer->getComputeAtPosition())) {
-          auto producer_non_ca_id =
-              producer->axis(i + producer->getComputeAtPosition());
-          auto producer_non_ca_id_ptype = producer_non_ca_id->getParallelType();
-          if (!isParallelTypeThread(producer_non_ca_id_ptype)) {
-            continue;
-          }
+      for (const auto i :
+           c10::irange(producer->nDims() - producer->getComputeAtPosition())) {
+        auto producer_non_ca_id =
+            producer->axis(i + producer->getComputeAtPosition());
+        auto producer_non_ca_id_ptype = producer_non_ca_id->getParallelType();
+        if (!isParallelTypeThread(producer_non_ca_id_ptype)) {
+          continue;
+        }
 
-          auto consumer_exact_map_id_it = std::find_if(
-              consumer->domain()->domain().begin(),
-              consumer->domain()->domain().end(),
-              [&](IterDomain* consumer_leaf_id) {
-                auto it = c2p_map.find(consumer_leaf_id);
-                return it != c2p_map.end() && it->second == producer_non_ca_id;
-              });
-          if (consumer_exact_map_id_it != consumer->domain()->domain().end() &&
-              (*consumer_exact_map_id_it)->getParallelType() ==
-                  producer_non_ca_id_ptype) {
-            continue;
-          }
+        auto resized_tensor_exact_map_id_it = std::find_if(
+            resized_tensor->domain()->domain().begin(),
+            resized_tensor->domain()->domain().end(),
+            [&](IterDomain* resized_tensor_leaf_id) {
+              auto it = c2p_map.find(resized_tensor_leaf_id);
+              return it != c2p_map.end() && it->second == producer_non_ca_id;
+            });
+        if (resized_tensor_exact_map_id_it !=
+                resized_tensor->domain()->domain().end() &&
+            (*resized_tensor_exact_map_id_it)->getParallelType() ==
+                producer_non_ca_id_ptype) {
+          continue;
+        }
 
-          // Promotion required
-          if (isParallelTypeThreadDim(producer_non_ca_id_ptype) &&
-              producer->getMemoryType() == MemoryType::Local) {
-            producer->setMemoryType(MemoryType::Shared);
-            std::cerr << "Promoting memory type of " << producer->toString()
-                      << " to shared\n";
-          } else if (
-              isParallelTypeBlockDim(producer_non_ca_id_ptype) &&
-              (producer->getMemoryType() == MemoryType::Local ||
-               producer->getMemoryType() == MemoryType::Shared)) {
-            producer->setMemoryType(MemoryType::Global);
-            std::cerr << "Promoting memory type of " << producer->toString()
-                      << " to global\n";
-          }
+        // Promotion required
+        if (isParallelTypeThreadDim(producer_non_ca_id_ptype)) {
+          setPromotion(producer, MemoryType::Shared);
+        } else if (isParallelTypeBlockDim(producer_non_ca_id_ptype)) {
+          setPromotion(producer, MemoryType::Global);
         }
       }
+    }
+  }
+
+  // Iterate over required_tensors so that promotion is done in a
+  // deterministic order
+  for (auto resized_tensor : resized_tensors) {
+    for (auto producer : ir_utils::producerTvsOf(resized_tensor)) {
+      auto it = tvs_to_promote.find(producer);
+      if (it == tvs_to_promote.end() ||
+          it->second == producer->getMemoryType()) {
+        continue;
+      }
+      std::cerr << "Promoting " << producer->toString() << std::endl;
+      auto new_mem_type = it->second;
+      producer->setMemoryType(new_mem_type);
     }
   }
 }

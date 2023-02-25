@@ -1448,7 +1448,7 @@ TEST_F(NVFuserTest, FusionResizeReductionSliceScheduler1_CUDA) {
         sub(tv1->axis(0)->extent(), IrBuilder::create<Int>(2))}});
   fusion.addOutput(tv2);
 
-  std::vector<int64_t> shape0({110, 12345});
+  std::vector<int64_t> shape0({10, 1234});
 
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
@@ -1488,7 +1488,7 @@ TEST_F(NVFuserTest, FusionResizeSoftmaxSliceScheduler1_CUDA) {
        Slice()});
   fusion.addOutput(tv2);
 
-  std::vector<int64_t> shape0({110, 12345});
+  std::vector<int64_t> shape0({13, 1234});
 
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);

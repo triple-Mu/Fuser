@@ -439,6 +439,8 @@ void schedulePointwise(Fusion* fusion, const PointwiseParams& params) {
   // Cache and fork outputs
   auto cached_outputs = scheduler_utils::cacheAndForkOutputs(fusion, true);
 
+  scheduler_utils::prepareForMemoryTypePromotion(fusion);
+
   std::vector<TensorView*> input_tvs;
   {
     auto filtered_tvs = ir_utils::filterByType<TensorView>(fusion->inputs());

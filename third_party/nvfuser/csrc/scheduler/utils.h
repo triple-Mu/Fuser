@@ -555,6 +555,8 @@ void propagateViewTransforms(Fusion* fusion, const ComputeAtMap& ca_map);
 //! Check if tv is an output of a fastest-dim reduction
 bool isFastestDimReduction(TensorView* tv);
 
+TORCH_CUDA_CU_API void prepareForMemoryTypePromotion(Fusion* fusion);
+
 TORCH_CUDA_CU_API void promoteProducerMemoryTypesOfResizedTensors(
     Fusion* fusion);
 
