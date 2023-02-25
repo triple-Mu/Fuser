@@ -1157,7 +1157,7 @@ void schedulePersistentKernel(Fusion* fusion, const ReductionParams& rparams) {
   // changes registry needs to change.
   auto reduction_tv = reduction_tvs[0];
 
-  if (scheduler_utils::getTVsWithNonReductionRFactor(fusion).size() > 0) {
+  if (ir_utils::getViewOps(fusion).size() > 0) {
     ComputeAtMap ca_map(fusion);
     // Propagate view transforms through the graph, expecially the reference.
     scheduler_utils::propagateViewTransforms(fusion, ca_map);
