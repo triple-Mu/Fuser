@@ -121,6 +121,7 @@ namespace nvfuser {
 class TensorDomain;
 class TensorView;
 class RootDomainMap;
+class ComputeAtMap;
 
 class TORCH_CUDA_CU_API TransformReplay {
  public:
@@ -129,14 +130,14 @@ class TORCH_CUDA_CU_API TransformReplay {
       const TensorView* producer,
       const TensorView* consumer,
       int consumer_compute_at_axis,
-      bool replay_resize = true,
+      bool replay_resize = false,
       bool replay_swizzle = false);
   static std::pair<TensorDomain*, unsigned int> replayPasC(
       const TensorView* producer,
       const TensorView* consumer,
       int consumer_compute_at_axis,
       const RootDomainMap& root_map,
-      bool replay_resize = true,
+      bool replay_resize = false,
       bool replay_swizzle = false);
 
   // Replay producer as consumer, returns {replayed_consumer_domain,
@@ -202,6 +203,25 @@ struct TORCH_CUDA_CU_API MostInlinedTransformPropagator
   virtual void propagateC2P(TensorView* from, TensorView* to) override;
   virtual void propagateP2C(TensorView* from, TensorView* to) override;
   virtual void propagateSibling(TensorView* from, TensorView* to) override;
+};
+
+class TORCH_CUDA_CU_API ResizableDomains {
+ public:
+  ResizableDomains(Fusion* fusion);
+
+  bool findResizableDomains(Resize* resize);
+
+  bool isResizable(IterDomain* id) const {
+    return resizable_domains_.count(id);
+  }
+
+ private:
+  ComputeAtMap& caMap();
+
+ private:
+  Fusion* fusion_ = nullptr;
+  std::unordered_set<IterDomain*> resizable_domains_;
+  std::unique_ptr<ComputeAtMap> ca_map_;
 };
 
 } // namespace nvfuser

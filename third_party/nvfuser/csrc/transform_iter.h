@@ -335,7 +335,8 @@ class TORCH_CUDA_CU_API BestEffortReplay {
       int producer_compute_at_axis,
       const RootDomainMap& root_map,
       bool skip_consumer_swizzle = true,
-      bool skip_producer_swizzle = true);
+      bool skip_producer_swizzle = true,
+      bool forward_resize = true);
 
   // Runs a best effort replay that ignores broadcast axes that appear in
   // consumer that are not mapped to producer in root_map.

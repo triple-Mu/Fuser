@@ -360,9 +360,11 @@ void IterDomainGraph::build(Fusion* fusion) {
       }
       bool is_leaf_id =
           std::find(domain.begin(), domain.end(), id) != domain.end();
+#if 0
       std::cerr << "Init: " << id->toString()
                 << ", is_view: " << is_view_rfactor_id
                 << ", leaf: " << is_leaf_id << std::endl;
+#endif
       initializeId(id, is_view_rfactor_id, is_leaf_id);
     }
   }

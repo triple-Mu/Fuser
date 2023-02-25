@@ -2142,10 +2142,10 @@ IterDomain* IterDomain::resize(
       "Expansion factor must be a scalar: ",
       right_expansion->toString());
 
-  // Only Inteation is considered for now. Should be possible to
-  // include expansion of broadcast domains
+  // Only Inteation is considered for now.
   TORCH_CHECK(
-      in->getIterType() == IterType::Iteration,
+      in->getIterType() == IterType::Iteration ||
+          in->getIterType() == IterType::Broadcast,
       "Not a valid IterType: ",
       in->getIterType());
 
@@ -2165,6 +2165,7 @@ IterDomain* IterDomain::resize(
   auto resized_id =
       IterDomainBuilder(in->container()->zeroVal(), resized_id_size->as<Int>())
           .is_rfactor_domain(mark_as_rfactor)
+          .iter_type(in->getIterType())
           .build();
 
   IrBuilder::create<Resize>(

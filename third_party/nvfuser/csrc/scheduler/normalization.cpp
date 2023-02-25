@@ -1217,6 +1217,8 @@ void schedulePersistentKernel(Fusion* fusion, const ReductionParams& rparams) {
       persistent_buffer->computeWith(-1, true);
     }
   }
+
+  scheduler_utils::promoteProducerMemoryTypesOfResizedTensors(fusion);
 }
 
 } // namespace nvfuser

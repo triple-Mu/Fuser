@@ -443,12 +443,20 @@ BestEffortReplay::BestEffortReplay(
     bool missing_replay_input = false;
 
     // Map target_expr inputs to replay domain directly
+    // std::cerr << "replay_inps\n";
     for (const auto t_i : c10::irange(target_id_inps.size())) {
-      // There might not be a mapping, that could be okay (depends on rfactor
-      // checking).
+      // std::cerr << "target_inp: " <<target_id_inps[t_i]->toString() <<
+      // std::endl;
+      //  There might not be a mapping, that could be okay (depends on rfactor
+      //  checking).
       auto it = target2replay_id_map_.find(target_id_inps[t_i]);
       if (it != target2replay_id_map_.end()) {
         replay_inps[t_i] = getReplayForwardedId(it->second);
+#if 0
+        std::cerr << "replay original id: " << it->second->toString()
+                  << ", forwarded id: " << replay_inps[t_i]->toString()
+                  << std::endl;
+#endif
       } else {
         missing_replay_input = true;
       }
@@ -491,6 +499,7 @@ BestEffortReplay::BestEffortReplay(
       TORCH_INTERNAL_ASSERT(
           !replay_has_rfactor_inp || any_target_expr_contains_broadcast_id,
           err_str);
+      // std::cerr << "inp missing\n";
       continue;
     }
 
@@ -515,20 +524,63 @@ BestEffortReplay::BestEffortReplay(
     }
 
     // Forward resize
-    if (forward_resize &&
-        (replay_expr == nullptr || !replay_expr->isA<Resize>()) &&
-        target_expr->isA<Resize>()) {
-      target2replay_id_map_[target_expr->as<Resize>()->out()] =
-          replay_inps.at(0);
-      continue;
+    if (forward_resize) {
+      if ((replay_expr == nullptr || !replay_expr->isA<Resize>()) &&
+          target_expr->isA<Resize>()) {
+        target2replay_id_map_[target_expr->as<Resize>()->out()] =
+            target2replay_id_map_.at(target_id_inps.at(0));
+        // std::cerr << "resize forwarded\n";
+        continue;
+      }
+#if 0
+      while (replay_expr->isA<Resize>()) {
+        auto resize_out = replay_expr->as<Resize>()->out();
+        replay_inps.at(0) = resize_out;        
+        auto it = replay_id2expr_map.find(resize_out);
+        if (it != replay_id2expr_map.end()) {
+          replay_expr = it->second;
+        } else {
+          replay_expr = nullptr;
+          break;
+        }
+      }
+      replay_has_rfactor_inp = std::any_of(
+        replay_inps.begin(),
+        replay_inps.end(),
+        [&replay_rfactor_ids](IterDomain* id) {
+          return id == nullptr ? false
+                               : id->isRFactorProduct() &&
+                  (replay_rfactor_ids.find(id) != replay_rfactor_ids.end());
+        });
+#endif
     }
 
     // If expressions of mapped inputs don't match, then continue to next target
     // expr
     if (mismatched_replay_exprs || replay_expr == nullptr) {
       TORCH_INTERNAL_ASSERT(!replay_has_rfactor_inp, err_str);
+      if (replay_expr == nullptr) {
+        // std::cerr << "No replay expr found for : " << target_expr;
+
+        for (const auto t_i : c10::irange(target_id_inps.size())) {
+          auto original_replay_inp =
+              target2replay_id_map_.at(target_id_inps.at(t_i));
+          auto maybe_forwarded_replay_inp = replay_inps.at(t_i);
+          if (original_replay_inp != maybe_forwarded_replay_inp) {
+            // std::cerr << "Forwarded from " << original_replay_inp->toString()
+            // << " to " << maybe_forwarded_replay_inp->toString() << std::endl;
+            target2replay_id_map_[target_id_inps[t_i]] =
+                maybe_forwarded_replay_inp;
+            leaf_ids_.erase(original_replay_inp);
+            leaf_ids_[maybe_forwarded_replay_inp] = counter++;
+          }
+        }
+      }
+      // std::cerr << "mismatch or not found\n";
       continue;
     }
+
+    // std::cerr << "debug1\n";
 
     bool mismatched_inputs = replay_inps.size() != replay_expr->inputs().size();
     for (size_t i = 0; i < replay_inps.size() && !mismatched_inputs; i++) {
@@ -719,7 +771,15 @@ struct ForwardingInfo {
   std::unordered_map<IterDomain*, std::vector<IterDomain*>>
       consumer_compliment_map;
 
-  ForwardingInfo(const TensorView* producer, const TensorView* consumer) {
+  ForwardingInfo(
+      const TensorView* producer,
+      const TensorView* consumer,
+      bool forward_resize = false) {
+    if (forward_resize) {
+      // forwardResize(producer, producer_forwarding_map);
+      forwardResize(consumer, consumer_forwarding_map);
+    }
+
     // Either producer or consumer maps depending on operation
     std::unordered_map<IterDomain*, IterDomain*>* active_forwarding_map =
         nullptr;
@@ -819,6 +879,20 @@ struct ForwardingInfo {
       }
     }
   }
+
+  void forwardResize(
+      const TensorView* tv,
+      std::unordered_map<IterDomain*, IterDomain*>& forwading_map) {
+    // std::cerr << "forwardResize: " << tv->toString() << std::endl;
+    std::vector<Expr*> tv_history = StmtSort::getExprs(
+        FusionGuard::getCurFusion(),
+        std::vector<Val*>(
+            tv->domain()->domain().begin(), tv->domain()->domain().end()));
+    for (auto resize : ir_utils::filterByType<Resize>(tv_history)) {
+      // std::cerr << "forwardResize: expr" <<resize->toString() << std::endl;
+      forwading_map.emplace(resize->in(), resize->out());
+    }
+  }
 };
 
 // Trace chain of swizzles until reaching
@@ -906,10 +980,16 @@ void BestEffortReplay::addComplimentLeafIDs(
   // Grab all compliments of forwarded ids.
   std::vector<IterDomain*> compliments;
   for (auto forwarded_id : expanded_forwarded_ids) {
+    // There's no compliment for a resized ID
+    if (!forwarded_id->uses().empty() &&
+        forwarded_id->uses().front()->isA<Resize>()) {
+      continue;
+    }
     auto compliment_map_it = compliment_map.find(forwarded_id);
     TORCH_INTERNAL_ASSERT(
         compliment_map_it != compliment_map.end(),
-        "Issue tracking forwarded broadcast merges in best effort replay.");
+        "Issue tracking forwarded broadcast merges in best effort replay. ",
+        forwarded_id->toString());
     compliments.insert(
         compliments.end(),
         compliment_map_it->second.begin(),
@@ -946,7 +1026,8 @@ BestEffortReplay BestEffortReplay::replayCasP(
     int producer_compute_at_axis,
     const RootDomainMap& root_map,
     bool skip_consumer_swizzle,
-    bool skip_producer_swizzle) {
+    bool skip_producer_swizzle,
+    bool forward_resize) {
   if (producer_compute_at_axis < 0)
     producer_compute_at_axis += (int)producer->nDims() + 1;
 
@@ -984,7 +1065,7 @@ BestEffortReplay BestEffortReplay::replayCasP(
       producer->domain(), consumer->domain(), producer_CA_root_ids);
 
   // See FusionAdvancedComputeAt7 for an example of the forwarding logic
-  ForwardingInfo forwarding_info(producer, consumer);
+  ForwardingInfo forwarding_info(producer, consumer, forward_resize);
 
   auto consumer_replay = BestEffortReplay(
       consumer->domain()->domain(),
@@ -993,7 +1074,8 @@ BestEffortReplay BestEffortReplay::replayCasP(
       forwarding_info.consumer_forwarding_map,
       forwarding_info.producer_forwarding_map,
       skip_consumer_swizzle,
-      skip_producer_swizzle);
+      skip_producer_swizzle,
+      forward_resize);
 
   consumer_replay.addComplimentLeafIDs(
       forwarding_info.consumer_forwarding_map,

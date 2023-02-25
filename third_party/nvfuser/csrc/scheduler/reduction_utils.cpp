@@ -255,8 +255,8 @@ TensorView* scheduleReductionTV(
             << std::endl;
   auto reduction_rf_tv = sortAndRFactor(reduction_tv);
 
-  std::cerr << "after sortAndRFactor: " << reduction_tv->toString()
-            << ", " << reduction_rf_tv->toString() << std::endl;
+  std::cerr << "after sortAndRFactor: " << reduction_tv->toString() << ", "
+            << reduction_rf_tv->toString() << std::endl;
 
   // In the case of outer grid persistence, make sure the vectorized
   // domain placed at the innermost position.
@@ -357,6 +357,9 @@ void multiReductionInliner(
   const bool is_outer_grid_persistence = rparams.persistent_kernel &&
       rparams.cross_grid_inner_reduction && !rparams.fastest_dim;
 
+  std::cout << "multiReductionInliner\n";
+  fusion->printMath();
+
   // Propagate transformations before we rfactor the other reductions
   TransformPropagator propagator(reference_tv);
   MaxRootDomainInfoSpanningTree(reference_tv).traverse(&propagator);
@@ -398,7 +401,6 @@ void multiReductionInliner(
   std::cerr << "Rfactor done\n";
   fusion->printMath();
   std::cout << std::endl;
-
 
   bool unroll = rparams.isUnrolled();
 

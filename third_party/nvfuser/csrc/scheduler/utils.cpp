@@ -2374,14 +2374,13 @@ std::vector<TensorView*> getResizedTensors(Fusion* fusion) {
 
   auto fusion_vals = fusion->usedMathVals();
   for (auto tv : ir_utils::filterByType<TensorView>(fusion_vals)) {
-    if (!tv->hasRFactor()) {
-      continue;
-    }
+    // if (!tv->hasRFactor()) {
+    // continue;
+    // }
     auto rf_exprs = StmtSort::getExprsBetween(
         fusion,
         {tv->getRootDomain().begin(), tv->getRootDomain().end()},
-        {tv->getMaybeRFactorDomain().begin(),
-         tv->getMaybeRFactorDomain().end()});
+        {tv->domain()->domain().begin(), tv->domain()->domain().end()});
     if (std::any_of(rf_exprs.begin(), rf_exprs.end(), [](Expr* expr) {
           return expr->isA<Resize>();
         })) {
@@ -2394,8 +2393,9 @@ std::vector<TensorView*> getResizedTensors(Fusion* fusion) {
 
 void promoteProducerMemoryTypesOfResizedTensors(Fusion* fusion) {
   auto resized_tensors = getResizedTensors(fusion);
-
+  fusion->printMath();
   for (auto resized_tensor : resized_tensors) {
+    std::cerr << "resized tensor: " << resized_tensor->toString() << std::endl;
     for (auto producer : ir_utils::producerTvsOf(resized_tensor)) {
       auto consumers = ir_utils::consumerTvsOf(producer);
       for (auto consumer : consumers) {
@@ -2433,11 +2433,15 @@ void promoteProducerMemoryTypesOfResizedTensors(Fusion* fusion) {
           if (isParallelTypeThreadDim(producer_non_ca_id_ptype) &&
               producer->getMemoryType() == MemoryType::Local) {
             producer->setMemoryType(MemoryType::Shared);
+            std::cerr << "Promoting memory type of " << producer->toString()
+                      << " to shared\n";
           } else if (
               isParallelTypeBlockDim(producer_non_ca_id_ptype) &&
               (producer->getMemoryType() == MemoryType::Local ||
                producer->getMemoryType() == MemoryType::Shared)) {
             producer->setMemoryType(MemoryType::Global);
+            std::cerr << "Promoting memory type of " << producer->toString()
+                      << " to global\n";
           }
         }
       }
