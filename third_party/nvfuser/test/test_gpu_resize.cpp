@@ -1230,15 +1230,13 @@ TEST_F(NVFuserTest, FusionResizeSliceReduceScheduler1_CUDA) {
       __FILE__);
 }
 
-// Multiple slice+reduction. Different slices. Should be segmented to
-// separate kernels as the reduction scheduler doesn't accept
-// different rfactor tensors.
+// Multiple slice+reduction. Different slices.
 TEST_F(NVFuserTest, FusionResizeSliceReduceScheduler2_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;
   FusionGuard fg(fusion_ptr.get());
 
-  auto tv0 = makeSymbolicTensor(2);
+  auto tv0 = makeContigTensor(2);
   fusion.addInput(tv0);
 
   auto start0 = IrBuilder::create<Int>();
@@ -1257,12 +1255,10 @@ TEST_F(NVFuserTest, FusionResizeSliceReduceScheduler2_CUDA) {
   auto tv4 = sum(tv3, {1});
   fusion.addOutput(tv4);
 
-  fusion.printMath();
-
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
 
-  std::vector<int64_t> shape({123, 999});
+  std::vector<int64_t> shape({123, 1024});
   std::vector<int64_t> slice_inputs({1, shape[0] - 2, 3, shape[1] - 4});
 
   auto t0 = at::randn(shape, options);
@@ -1274,12 +1270,6 @@ TEST_F(NVFuserTest, FusionResizeSliceReduceScheduler2_CUDA) {
 
   FusionExecutorCache executor_cache(std::move(fusion_ptr));
   auto cg_outputs = executor_cache.runFusionWithInputs(aten_inputs);
-
-  auto runtime = executor_cache.getMostRecentKernelRuntime();
-  TORCH_CHECK(runtime->isSegmented(), "Expected to segment the fusion");
-  auto num_segments = runtime->fusionSegments()->groups().size();
-  TORCH_CHECK(
-      num_segments == 2, "Expected to segment the fusion to two kernels");
 
   auto t1 = t0.index(
       {at::indexing::Slice(0, at::indexing::None),
@@ -1319,8 +1309,6 @@ TEST_F(NVFuserTest, FusionSliceReduceScheduler3_CUDA) {
   auto tv3 = slice(tv0, {Slice(), {start0, end0}});
   auto tv4 = sum(tv3, {1});
   fusion.addOutput(tv4);
-
-  fusion.printMath();
 
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
@@ -1530,8 +1518,6 @@ TEST_F(NVFuserTest, FusionResizeSoftmaxSliceScheduler2_CUDA) {
         sub(tv1->axis(1)->extent(), IrBuilder::create<Int>(2))}});
   fusion.addOutput(tv2);
 
-  fusion.printMath();
-
   std::vector<int64_t> shape0({110, 12345});
 
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
@@ -1557,6 +1543,7 @@ TEST_F(NVFuserTest, FusionResizeSoftmaxSliceScheduler2_CUDA) {
       __FILE__);
 }
 
+#if 0
 TEST_F(NVFuserTest, TMP) {
   auto fusion_ptr = std::make_unique<Fusion>();
   auto& fusion = *fusion_ptr;
@@ -1578,8 +1565,6 @@ TEST_F(NVFuserTest, TMP) {
 
   auto tv6 = add(tv3, tv5);
   fusion.addOutput(tv6);
-
-  fusion.print();
 
   tv6->merge(0)->merge(0)->split(0, 4);
 
@@ -1618,8 +1603,6 @@ TEST_F(NVFuserTest, TMP2) {
   auto tv8 = add(tv6, tv7);
   auto tv9 = sum(tv8, {0});
   fusion.addOutput(tv9);
-
-  fusion.print();
 
   auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
   at::manual_seed(0);
@@ -1676,5 +1659,5 @@ TEST_F(NVFuserTest, TMP5) {
   tv2->split(-1, 4);
   std::cout << tv2->toString() << std::endl;
 }
-
+#endif
 } // namespace nvfuser

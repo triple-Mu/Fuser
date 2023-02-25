@@ -233,8 +233,6 @@ void parallelizeAllLike(
     bool propagate_padding) {
   FusionGuard fg(reference_tv->fusion());
 
-  reference_tv->fusion()->printMath();
-  std::cout << "Reference: " << reference_tv->toString() << std::endl;
   if (pos < 0) {
     pos += reference_tv->nDims() + 1;
   }
@@ -2197,7 +2195,6 @@ std::unordered_map<int, int> domainReorderAsRfactorMap(TensorView* tv) {
   // expressions. We'll always insert the result of split in the location of the
   // input, and insert the merge result in the position of the inner dimension.
 
-  std::cerr << "domainReorderAsRfactorMap: " << tv->toString() << std::endl;
   auto reordered_ids = tv->getMaybeRFactorDomain();
   for (const auto* expr : transform_exprs) {
     if (const Split* split = dynamic_cast<const Split*>(expr)) {
@@ -2432,14 +2429,11 @@ void promoteProducerMemoryTypesOfResizedTensors(Fusion* fusion) {
     tvs_to_promote.emplace(tv, tv->getMemoryType());
 
     if (memoryTypeToInt(m_type) > memoryTypeToInt(tvs_to_promote.at(tv))) {
-      std::cerr << "Will promote " << tv->toString() << " to " << m_type
-                << std::endl;
       tvs_to_promote[tv] = m_type;
     }
   };
 
   for (auto resized_tensor : resized_tensors) {
-    std::cerr << "resized tensor: " << resized_tensor->toString() << std::endl;
     for (auto producer : ir_utils::producerTvsOf(resized_tensor)) {
       auto c2p_map = BestEffortReplay(
                          producer->domain()->domain(),
@@ -2491,7 +2485,6 @@ void promoteProducerMemoryTypesOfResizedTensors(Fusion* fusion) {
           it->second == producer->getMemoryType()) {
         continue;
       }
-      std::cerr << "Promoting " << producer->toString() << std::endl;
       auto new_mem_type = it->second;
       producer->setMemoryType(new_mem_type);
     }
