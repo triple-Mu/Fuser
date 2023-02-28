@@ -885,12 +885,6 @@ void BestEffortReplay::addComplimentLeafIDs(
   // Grab all compliments of forwarded ids.
   std::vector<IterDomain*> compliments;
   for (auto forwarded_id : expanded_forwarded_ids) {
-    // There's no compliment for a resized ID
-    // TODO: Necessary?
-    if (!forwarded_id->uses().empty() &&
-        forwarded_id->uses().front()->isA<Resize>()) {
-      continue;
-    }
     auto compliment_map_it = compliment_map.find(forwarded_id);
     TORCH_INTERNAL_ASSERT(
         compliment_map_it != compliment_map.end(),
