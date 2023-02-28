@@ -46,6 +46,10 @@ namespace nvfuser {
 //   Map all iteration domains
 //   Always contain root mappings (otherwise they could have been forwarded in
 //   broadcast)
+// IdMappingMode::PERMISSIVE_RESIZE
+//   Include everything in PERMISSIVE. Map also domains that are
+//   inputs and outputs of resize ops. Used for, e.g., propagating
+//   parallel types across those domains.
 // IdMappingMode::EXACT
 //   Don't map any broadcast axes to non-broadcast axes
 //   Do not forward through any broadcast IDs

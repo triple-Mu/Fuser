@@ -522,13 +522,13 @@ void IterDomainGraph::build(Fusion* fusion) {
           }
         }
 
+        // Mostly the same as the above for the permissive map but
+        // nothing to do for the loop map
         for (auto& dset : permissive_resize_disjoint_sets.disjointSets()) {
           auto& vec = dset->vector();
           for (auto i : c10::irange(vec.size())) {
             auto id1 = vec[i];
             permissive_resize_nodes_.mapEntries(id1, vec[0]);
-
-            // TODO: is this necessary?
             mapMaybeSwizzleOp(permissive_resize_nodes_, id1);
           }
         }
@@ -681,33 +681,31 @@ void IterDomainGraph::build(Fusion* fusion) {
   }
 
   // Build almost exact map by forwarding through broadcast axes
-  {
-    almost_exact_nodes_ = exact_nodes_;
-    std::unordered_set<Expr*> visited;
-    auto all_elements = exact_nodes_.getAllElements();
-    for (auto entry : all_elements.vector()) {
-      if (entry->definition() == nullptr) {
-        continue;
+  almost_exact_nodes_ = exact_nodes_;
+  std::unordered_set<Expr*> visited;
+  auto all_elements = exact_nodes_.getAllElements();
+  for (auto entry : all_elements.vector()) {
+    if (entry->definition() == nullptr) {
+      continue;
+    }
+    auto def = entry->definition();
+    if (!visited.emplace(def).second) {
+      continue;
+    }
+    if (auto merge = dynamic_cast<Merge*>(def)) {
+      if (merge->inner()->extent()->isOneInt()) {
+        almost_exact_nodes_.mapEntries(merge->outer(), merge->out());
       }
-      auto def = entry->definition();
-      if (!visited.emplace(def).second) {
-        continue;
+      if (merge->outer()->extent()->isOneInt()) {
+        almost_exact_nodes_.mapEntries(merge->inner(), merge->out());
       }
-      if (auto merge = dynamic_cast<Merge*>(def)) {
-        if (merge->inner()->extent()->isOneInt()) {
-          almost_exact_nodes_.mapEntries(merge->outer(), merge->out());
-        }
-        if (merge->outer()->extent()->isOneInt()) {
-          almost_exact_nodes_.mapEntries(merge->inner(), merge->out());
-        }
-      } else if (auto split = dynamic_cast<Split*>(def)) {
-        if (split->factor()->isOneInt() && split->startOffset()->isZeroInt() &&
-            split->stopOffset()->isZeroInt()) {
-          if (split->innerSplit()) {
-            almost_exact_nodes_.mapEntries(split->in(), split->outer());
-          } else {
-            almost_exact_nodes_.mapEntries(split->in(), split->inner());
-          }
+    } else if (auto split = dynamic_cast<Split*>(def)) {
+      if (split->factor()->isOneInt() && split->startOffset()->isZeroInt() &&
+          split->stopOffset()->isZeroInt()) {
+        if (split->innerSplit()) {
+          almost_exact_nodes_.mapEntries(split->in(), split->outer());
+        } else {
+          almost_exact_nodes_.mapEntries(split->in(), split->inner());
         }
       }
     }
