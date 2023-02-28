@@ -7,7 +7,6 @@
 #include <ir_all_nodes.h>
 #include <ir_iostream.h>
 #include <ir_utils.h>
-#include <iter_visitor.h>
 #include <lower2device.h>
 #include <lower_double_buffer.h>
 #include <lower_index_compute.h>
@@ -1494,13 +1493,10 @@ std::vector<Val*> Index::getNonGlobalProducerStridedIndices(
     const std::vector<kir::ForLoop*>& loops,
     const std::unordered_map<IterDomain*, Val*>& override_index) {
   const auto gpu_lower = GpuLower::current();
-#if 0
-  std::cerr << "getNonGlobalProducerStridedIndices: " << producer_tv->toString()
-            << ", " << consumer_tv->toString() << std::endl;
-#endif
   // Replay producer to look like consumer so we can index on producer since our
-  // loop nests look like consumer. Resize ops can be replayed safely.
+  // loop nests look like consumer.
   auto pairwise_map = PairwiseRootDomainMap(producer_tv, consumer_tv);
+  // Resize ops can be and should be replayed.
   auto producer_replayed_as_consumer =
       TransformReplay::replayPasC(
           producer_tv, consumer_tv, -1, pairwise_map, true)
@@ -1715,7 +1711,6 @@ std::vector<Val*> Index::getNonGlobalProducerStridedIndices(
     }
   }
 
-  // std::cerr << "getNonGlobalProducerStridedIndices done\n";
   return strided_inds;
 }
 
@@ -1984,7 +1979,8 @@ std::vector<Val*> Index::getGlobalConsumerStridedIndices(
   auto strides = getStrides(consumer_tv);
   // if we need to override index, we need to generate the index from each
   // root axis firstly.
-  auto root_inds = getConsumerRootIndices(consumer_tv, loops, index_from_id_graph);
+  auto root_inds =
+      getConsumerRootIndices(consumer_tv, loops, index_from_id_graph);
 
   // Global striding
   auto vectorize_shift =
@@ -2022,15 +2018,9 @@ std::vector<Val*> Index::getNonGlobalConsumerStridedIndices(
     const std::vector<kir::ForLoop*>& loops,
     const std::unordered_map<IterDomain*, Val*>& override_index) {
   const auto gpu_lower = GpuLower::current();
-#if 0
-  std::cerr << "getNonGlobalConsumerStridedIndices: " << consumer_tv->toString()
-            << std::endl;
-#endif
-
   // At now, only ScatterOp set override_index, and the output of ScatterOp
   // is on global memory, so in this method, the override_index must be empty.
   TORCH_INTERNAL_ASSERT(override_index.size() == 0);
-
   auto consumer_indexing_from_idgraph = getTensorIndexFromIdGraph(
       loops,
       consumer_tv,
@@ -2173,10 +2163,6 @@ std::vector<Val*> Index::getNonGlobalConsumerStridedIndices(
       strided_inds.push_back(db_strided_index);
     }
   }
-#if 0
-  std::cerr << "getNonGlobalConsumerStridedIndices done: "
-            << consumer_tv->toString() << std::endl;
-#endif
   return strided_inds;
 }
 
@@ -2295,40 +2281,14 @@ std::vector<PredicateDomainInfo> getPredicateContigIds(
     const std::unordered_map<IterDomain*, Val*>& consumer_index_map) {
   const auto gpu_lower = GpuLower::current();
 
-  // Where there's a resize expr between the root and the rfactor
+  // When there's a resize expr between the root and the rfactor
   // domains, predicate the rfactor domain. Otherwise, predicate the
   // root domain. The actual size of an IterDomain after resize
   // changes, and the output IterDomain needs to be used to generate
   // its predicate.
-  auto has_resize = [](TensorView* tv) -> bool {
-    if (!tv->hasRFactor()) {
-      return false;
-    }
-    auto root_to_rf_exprs = StmtSort::getExprsBetween(
-        tv->fusion(),
-        {tv->getRootDomain().begin(), tv->getRootDomain().end()},
-        {tv->getRFactorDomain().begin(), tv->getRFactorDomain().end()});
-    return std::any_of(
-        root_to_rf_exprs.begin(), root_to_rf_exprs.end(), [](Expr* expr) {
-          return expr->isA<Resize>();
-        });
-  };
-
-  const auto& consumer_root_domain = has_resize(consumer_tv)
+  const auto& consumer_root_domain = ir_utils::hasResizedRfactor(consumer_tv)
       ? consumer_tv->getMaybeRFactorDomain()
       : consumer_tv->getRootDomain();
-#if 0
-#if 1
-  const auto& consumer_root_domain =
-      ir_utils::isReductionOp(consumer_tv->definition()) ||
-      consumer_tv->definition()->isA<GatherOp>()
-      ? consumer_tv->getRootDomain()
-      : consumer_tv->getMaybeRFactorDomain();
-#else
-  const auto& consumer_root_domain =
-      consumer_tv->getRootDomain();
-#endif
-#endif
 
   if (consumer_root_domain.empty()) {
     return std::vector<PredicateDomainInfo>();
@@ -2910,12 +2870,11 @@ std::vector<RootPredicateInfo> Index::getReferenceRootPredicates(
       non_divisible_splits.begin(),
       non_divisible_splits.end());
 
-  auto expanded_domains_to_predicate =
-      getResizedDomainsToPredicate(consumer_tv);
+  auto resized_domains_to_predicate = getResizedDomainsToPredicate(consumer_tv);
   contig_id_infos.insert(
       contig_id_infos.end(),
-      expanded_domains_to_predicate.begin(),
-      expanded_domains_to_predicate.end());
+      resized_domains_to_predicate.begin(),
+      resized_domains_to_predicate.end());
 
   std::vector<RootPredicateInfo> pred_info_vec;
 

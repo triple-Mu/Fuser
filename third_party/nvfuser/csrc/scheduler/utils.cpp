@@ -948,17 +948,6 @@ std::vector<TensorView*> getViewTVs(Fusion* fusion) {
   return view_tvs;
 }
 
-std::vector<TensorView*> getTVsWithRFactor(Fusion* fusion) {
-  std::vector<TensorView*> tvs_with_rfactor;
-  auto fusion_vals = fusion->usedMathVals();
-  std::copy_if(
-      ir_utils::filterByType<TensorView>(fusion_vals).begin(),
-      ir_utils::filterByType<TensorView>(fusion_vals).end(),
-      std::back_inserter(tvs_with_rfactor),
-      [](TensorView* tv) { return tv->hasRFactor(); });
-  return tvs_with_rfactor;
-}
-
 std::vector<TensorView*> getTVsWithNonReductionRFactor(Fusion* fusion) {
   std::vector<TensorView*> tvs_with_rfactor;
   auto fusion_vals = fusion->usedMathVals();
@@ -2368,27 +2357,22 @@ bool isFastestDimReduction(TensorView* tv) {
   return false;
 }
 
+namespace {
+
 std::vector<TensorView*> getResizedTensors(Fusion* fusion) {
   std::vector<TensorView*> resized_tensors;
 
   auto fusion_vals = fusion->usedMathVals();
   for (auto tv : ir_utils::filterByType<TensorView>(fusion_vals)) {
-    // if (!tv->hasRFactor()) {
-    // continue;
-    // }
-    auto rf_exprs = StmtSort::getExprsBetween(
-        fusion,
-        {tv->getRootDomain().begin(), tv->getRootDomain().end()},
-        {tv->domain()->domain().begin(), tv->domain()->domain().end()});
-    if (std::any_of(rf_exprs.begin(), rf_exprs.end(), [](Expr* expr) {
-          return expr->isA<Resize>();
-        })) {
+    if (ir_utils::hasResizedRfactor(tv)) {
       resized_tensors.push_back(tv);
     }
   }
 
   return resized_tensors;
 }
+
+} // namespace
 
 void prepareForMemoryTypePromotion(Fusion* fusion) {
   auto resized_tensors = getResizedTensors(fusion);

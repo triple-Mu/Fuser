@@ -263,10 +263,6 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
   if (producer == consumer) {
     return {producer->domain(), producer->nDims()};
   }
-#if 0
-  std::cerr << "replayPasC: producer: " << producer->toString()
-            << ", consumer: " << consumer->toString() << std::endl;
-#endif
   if (consumer_pos < 0) {
     consumer_pos += (int)consumer->nDims() + 1;
   }
@@ -489,7 +485,6 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
       new_IDs,
       producer->domain()->contiguity());
 
-  //  std::cerr << "replayed: " << replayed->toString() << std::endl;
   return {replayed, producer_pos};
 }
 
@@ -500,10 +495,6 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
     const RootDomainMap& root_map,
     bool replay_swizzle) {
   FUSER_PERF_SCOPE("TransformReplay::replayCasP");
-#if 0
-  std::cerr << "replayCasP: " << consumer->toString()
-            << ", producer: " << producer->toString() << std::endl;
-#endif
   // If this is a reduction operation, we may call transform_replay on the same
   // tensor view. When this happens, just return thet target view.
   if (consumer == producer)
@@ -535,7 +526,6 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
   BestEffortReplay forward_replay = BestEffortReplay::replayCasP(
       consumer, producer, producer_pos, root_map, false, !replay_swizzle, true);
 
-  // std::cerr << "replayCasP BE done\n";
   //  Track dangling leaves which can be produced in
   //  BestEffortReplay::replayCasP these don't have any equivalent in producer
   //  so they're not in the map. We will simply map them to themselves so we
@@ -545,15 +535,12 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
   for (auto entry : forward_replay.getReplay()) {
     if (forwarded_replay_leaves.find(entry.second) !=
         forwarded_replay_leaves.end()) {
-#if 0
-      std::cerr << entry.first->toString() << " -> " << entry.second->toString()
-                << std::endl;
-#endif
       forwarded_replay_map[entry.first] = entry.second;
       forwarded_replay_leaves.erase(entry.second);
     }
   }
 
+  // TODO: error_on_failure was true. SHould be changed.
   // Replay producer dimensions.
   ReplayTransformations replay_CasP(
       target_producer_ids, forwarded_replay_map, false, false, replay_swizzle);
@@ -723,7 +710,6 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
       new_IDs,
       consumer->domain()->contiguity());
 
-  // std::cerr << "replayCasP: replayed: " << replayed->toString() << std::endl;
   return {replayed, consumer_pos};
 }
 

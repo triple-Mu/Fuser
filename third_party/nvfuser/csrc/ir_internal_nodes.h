@@ -2340,8 +2340,9 @@ class TORCH_CUDA_CU_API CatOp : public Expr {
   //! valid after indexing
   Val* getConcatenatedDomainIndex() const;
 
-  //! When this predicate is true, the specified input tensor is used
-  //! to fill the output tensor. Only valid after indexing
+  //! Gets a Bool indicating if the input tensor specified by
+  //! tensor_idx should be used to fill the output tensor. Only valid
+  //! with the Kernel container
   Bool* getPred(int input_idx) const;
 };
 

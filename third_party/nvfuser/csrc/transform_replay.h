@@ -121,11 +121,15 @@ namespace nvfuser {
 class TensorDomain;
 class TensorView;
 class RootDomainMap;
-class ComputeAtMap;
 
 class TORCH_CUDA_CU_API TransformReplay {
  public:
-  // Replay producer as consumer, returns {producer, producer_compute_at_axis}.
+  // Replay producer as consumer, returns {producer,
+  // producer_compute_at_axis}.
+  //
+  // replay_resize indicates whether resize should be replayed or
+  // ignored. It is only replayed when replaying a producer for
+  // indexing.
   static std::pair<TensorDomain*, unsigned int> replayPasC(
       const TensorView* producer,
       const TensorView* consumer,
@@ -142,6 +146,8 @@ class TORCH_CUDA_CU_API TransformReplay {
 
   // Replay producer as consumer, returns {replayed_consumer_domain,
   // consumer_compute_at_axis}.
+  //
+  // Unlike replayPasC, it always ignores resize.
   static std::pair<TensorDomain*, unsigned int> replayCasP(
       const TensorView* consumer,
       const TensorView* producer,

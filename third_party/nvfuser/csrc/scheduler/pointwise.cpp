@@ -439,6 +439,8 @@ void schedulePointwise(Fusion* fusion, const PointwiseParams& params) {
   // Cache and fork outputs
   auto cached_outputs = scheduler_utils::cacheAndForkOutputs(fusion, true);
 
+  // Create a cache for a tensor if it may need to be placed on a
+  // farther but shared memory space
   scheduler_utils::prepareForMemoryTypePromotion(fusion);
 
   std::vector<TensorView*> input_tvs;

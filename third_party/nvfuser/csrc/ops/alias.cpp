@@ -372,6 +372,8 @@ TensorView* transpose(TensorView* x) {
   return transpose(x, 0, 1);
 }
 
+// Padding widths are assumed to be non-negative. Currently there's no
+// validation.
 TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
   const auto& inp_dom = inp->domain()->noReductions();
 
@@ -441,6 +443,10 @@ TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
   return out;
 }
 
+// cat is implemented as PadOp and CatOp. Padding is done first to
+// account for the size difference between each of the inputs and the
+// output. All of the inputs to CatOp have the same shape as the
+// output shape.
 TensorView* cat(const std::vector<TensorView*>& inputs, int cat_dim) {
   TORCH_CHECK(!inputs.empty(), "No input tensor given");
 
@@ -559,6 +565,9 @@ TensorView* cat(const std::vector<TensorView*>& inputs, int cat_dim) {
   return out;
 }
 
+// Currently there's no error check about  the actual values of the
+// Slice parameters. For example, the start parameter of a range of a
+// domain is assumed to be >= 0 and < the extent of the domain.
 TensorView* slice(TensorView* inp, const std::vector<Slice>& ranges) {
   const auto inp_dom = TensorDomain::noReductions(inp->getMaybeRFactorDomain());
   const int ndims = static_cast<int>(inp_dom.size());

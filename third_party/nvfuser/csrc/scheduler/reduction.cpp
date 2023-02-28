@@ -1031,7 +1031,6 @@ void scheduleReduction(Fusion* fusion, const ReductionParams& rparams) {
   TORCH_INTERNAL_ASSERT(
       reference_tv != nullptr && reduction_tv != nullptr,
       "Need these two tensor views to finish the scheduling.");
-
   reduction_scheduler_utils::multiReductionInliner(
       fusion,
       rparams,

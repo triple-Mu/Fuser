@@ -203,10 +203,7 @@ TORCH_CUDA_CU_API std::vector<TensorView*> getReductionTvs(Fusion* fusion);
 // Returns a list of TensorViews that are the consumer tv for a view operation.
 std::vector<TensorView*> getViewTVs(Fusion* fusion);
 
-// Returns a list of TensorViews that have a rfactor domain
-std::vector<TensorView*> getTVsWithRFactor(Fusion* fusion);
-
-// Returns a list of TensorViews that have a rfactor domain
+// Returns a list of non-reduction TensorViews that have a rfactor domain
 std::vector<TensorView*> getTVsWithNonReductionRFactor(Fusion* fusion);
 
 // Reset inputs and outputs to global memory, everything else to local.
@@ -555,8 +552,17 @@ void propagateViewTransforms(Fusion* fusion, const ComputeAtMap& ca_map);
 //! Check if tv is an output of a fastest-dim reduction
 bool isFastestDimReduction(TensorView* tv);
 
+//! Certain tensors may need to be placed on shared or global memory
+//! due to data dependencies caused by resize operations. Create
+//! cachees of those tensors so that original operations producing
+//! them should keep using the same memory. This avoids, for example,
+//! reductions to global memory.
 TORCH_CUDA_CU_API void prepareForMemoryTypePromotion(Fusion* fusion);
 
+//! If a resized tensor induces a data dependency between threads,
+//! move its producer to a shared memory that is sufficient to satisfy
+//! the dependency. A proper RAW sync will be automatically inserted
+//! when the fusion is lowered.
 TORCH_CUDA_CU_API void promoteProducerMemoryTypesOfResizedTensors(
     Fusion* fusion);
 

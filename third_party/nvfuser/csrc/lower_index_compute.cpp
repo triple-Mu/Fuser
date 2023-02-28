@@ -909,12 +909,6 @@ IndexFromIdGraph getTensorIndexFromIdGraph(
       GpuLower::current()->haloInfo(),
       GpuLower::current()->concretizedBroadcastDomains(),
       p2c_map);
-#if 0
-  if (index_producer) {
-    std::cerr << "updating indexing for producer: " << producer_tv->toString()
-              << std::endl;
-  }
-#endif
   auto target_indexing = indexing.updateIndexCompute(
       target_tv->domain(), index_update_map, contig_finder);
 
@@ -1281,7 +1275,10 @@ bool isPermissivelyMappedWithAny(IterDomain* id, const std::vector<Val*>& ids) {
     // are compatible. This is important when, for example, a tensor
     // is padded two times differently but to the same shape, and the
     // pad outputs are exactly mapped. In such a case, there're two
-    // paths from the post rfactor ID to the original input ID.
+    // paths from the post rfactor ID to the original input ID, and
+    // the correct path depends on the path where this producer is
+    // used as a producer. See the FusionPad8 test for a concrete
+    // example.
     if (auto id_resize = dynamic_cast<Resize*>(id->uses().at(0))) {
       auto mapped_id_resize =
           dynamic_cast<Resize*>(val->as<IterDomain>()->uses().at(0));
@@ -1385,24 +1382,13 @@ std::unordered_set<IterDomain*> buildLoopIndexingPreferredPath(
 // Get an rfactor IterDomain that is mapped with an IterDomain. If
 // multiple such IDs exist, select one whose input IDs are mapped with
 // the consumer IDs. This is to ensure the path from the leaf
-// IterDomains to the root matches with the consumer tensor. See
-// the FusionPad8 test for a concrete example.
+// IterDomains to the root matches with the consumer tensor.
 IterDomain* getRfactorIDToTraverse(
     IterDomain* id,
     const std::vector<Val*>& consumer_all_ids) {
   const auto& rfactor_ids =
       GpuLower::current()->caMap()->getViewRfactorDomainsOfIdGroup(
           id, IdMappingMode::PERMISSIVE);
-#if 0
-  std::cerr << "getRfactorIDToTraverse: " << id->toString() << ": "
-            << toDelimitedString(rfactor_ids.begin(), rfactor_ids.end())
-            << std::endl;
-
-  std::cerr << "consumer IDs: "
-            << toDelimitedString(
-                   consumer_all_ids.begin(), consumer_all_ids.end())
-            << std::endl;
-#endif
   if (rfactor_ids.empty()) {
     return nullptr;
   }
@@ -1418,17 +1404,9 @@ IterDomain* getRfactorIDToTraverse(
             rfactor_id_inputs.begin(),
             rfactor_id_inputs.end(),
             [&](IterDomain* rfactor_id_input) {
-              auto b = isPermissivelyMappedWithAny(
+              return isPermissivelyMappedWithAny(
                   rfactor_id_input, consumer_all_ids);
-#if 0
-              if (b) {
-                std::cerr << "input mapped: " << rfactor_id_input->toString()
-                          << std::endl;
-              }
-#endif
-              return b;
             })) {
-      // std::cerr << "Picked rf: " << rfactor_id->toString() << std::endl;
       return rfactor_id;
     }
   }

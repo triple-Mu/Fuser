@@ -254,7 +254,7 @@ bool UnrollPass::canOmitElseClause(kir::ForLoop* fl) {
   const auto& pred_map = GpuLower::current()->threadPredMap();
 
   std::unordered_set<Expr*> all_exprs_inside_loop_nest;
-  std::unordered_set<Expr*> pad_exprs;
+  std::unordered_set<Expr*> resize_exprs;
 
   while (loops.size() > 0) {
     auto loop = loops.back();
@@ -266,12 +266,15 @@ bool UnrollPass::canOmitElseClause(kir::ForLoop* fl) {
       if (lower_utils::hasBlockSync(expr, pred_map)) {
         return false;
       }
+      // Keep track of all expressions for additional check for
+      // resizing expressions
       all_exprs_inside_loop_nest.insert(expr);
-      if (auto pad = dynamic_cast<PadOp*>(expr)) {
-        pad_exprs.insert(pad);
-      }
-      if (auto pad = dynamic_cast<SliceOp*>(expr)) {
-        pad_exprs.insert(pad);
+      if (std::any_of(
+              expr->outputs().begin(), expr->outputs().end(), [](Val* output) {
+                return output->isA<TensorView>() &&
+                    ir_utils::hasResizedRfactor(output->as<TensorView>());
+              })) {
+        resize_exprs.insert(expr);
       }
     }
     // If the number of visits of the loop body per thread is one, the
@@ -308,22 +311,26 @@ bool UnrollPass::canOmitElseClause(kir::ForLoop* fl) {
     }
   }
 
-  // If a PadOp and any of its dependencies appear in the loop nest,
-  // the else clause cannot be omitted.
-  if (!pad_exprs.empty()) {
-    std::vector<Val*> pad_inputs;
+  // If an expression generates a resized tensor and any of its
+  // dependencies appears in the loop nest, the else clause cannot be
+  // omitted. The tensors appearing before the resizing expression has
+  // a different shape than the output of the resizing expression and
+  // its subsequent consumers, so the unswitch predicates would
+  // include the predicates for both sizes, which means the larger
+  // tensors would still need the else clause.
+  if (!resize_exprs.empty()) {
+    std::vector<Val*> resize_expr_inputs;
     std::transform(
-        pad_exprs.begin(),
-        pad_exprs.end(),
-        std::back_inserter(pad_inputs),
-        [](Expr* pad) { return pad->input(0); });
-    auto pad_dep_exprs = DependencyCheck::getAllExprsBetween(
+        resize_exprs.begin(),
+        resize_exprs.end(),
+        std::back_inserter(resize_expr_inputs),
+        [](Expr* resize_expr) { return resize_expr->input(0); });
+    auto dep_exprs = DependencyCheck::getAllExprsBetween(
         {fl->fusion()->inputs().begin(), fl->fusion()->inputs().end()},
-        pad_inputs);
-    if (std::any_of(
-            pad_dep_exprs.begin(), pad_dep_exprs.end(), [&](auto pad_dep_expr) {
-              return all_exprs_inside_loop_nest.count(pad_dep_expr);
-            })) {
+        resize_expr_inputs);
+    if (std::any_of(dep_exprs.begin(), dep_exprs.end(), [&](auto dep_expr) {
+          return all_exprs_inside_loop_nest.count(dep_expr);
+        })) {
       return false;
     }
   }

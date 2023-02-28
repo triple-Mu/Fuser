@@ -155,6 +155,12 @@ class PredicateAnalyzer : public OptOutDispatch {
     handle(merge->outer());
   }
 
+  void handle(Resize* resize) override {
+    // resize outputs are guaranteed to match by the check above in
+    // handle(IterDomain*).
+    handle(resize->in());
+  }
+
  private:
   //! BestEffort map from consumer IDs to producer IDs
   const DisjointSets<IterDomain*>& disjoint_c2p_ids_;
@@ -187,8 +193,7 @@ class PredicateChcker : public IterVisitor {
         predicateMisalignedVectorize(expr) || predicateShift(expr) ||
         predicateSharedMemAccess(expr) || predicateProducerConsumerPair(expr) ||
         predicateNonDivisibleRootDomains(expr) ||
-        predicateNonDivisibleSplit(expr) || predicateExpandReduce(expr) ||
-        predicateResize(expr);
+        predicateNonDivisibleSplit(expr) || predicateExpandReduce(expr);
 
     // A cp.async op would need a predicate for either the global
     //  input or its shared mem output, or both.
@@ -534,25 +539,6 @@ class PredicateChcker : public IterVisitor {
     for (auto output : ir_utils::filterByType<TensorView>(expr->outputs())) {
       if (non_divisible_split_info.splitsToPredicate().find(output) !=
           non_divisible_split_info.splitsToPredicate().end()) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // Is this necessary?
-  bool predicateResize(Expr* expr) const {
-    // Temporarily disabled
-    return false;
-    for (auto output : ir_utils::filterByType<TensorView>(expr->outputs())) {
-      auto exprs = StmtSort::getExprsBetween(
-          expr->fusion(),
-          {output->getRootDomain().begin(), output->getRootDomain().end()},
-          {output->domain()->domain().begin(),
-           output->domain()->domain().end()});
-      if (std::any_of(exprs.begin(), exprs.end(), [](Expr* expr) {
-            return expr->isA<Resize>();
-          })) {
         return true;
       }
     }
