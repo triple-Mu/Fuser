@@ -257,8 +257,8 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
     const TensorView* consumer,
     int consumer_pos,
     const RootDomainMap& root_map,
-    bool replay_resize,
-    bool replay_swizzle) {
+    bool replay_swizzle,
+    bool replay_resize) {
   FUSER_PERF_SCOPE("TransformReplay::replayPasC");
   if (producer == consumer) {
     return {producer->domain(), producer->nDims()};
@@ -722,8 +722,8 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
     const TensorView* producer,
     const TensorView* consumer,
     int compute_at_axis,
-    bool replay_resize,
-    bool replay_swizzle) {
+    bool replay_swizzle,
+    bool replay_resize) {
   // Use the pairwise root map as a default mapper
   PairwiseRootDomainMap root_map(producer, consumer);
   return replayPasC(
@@ -731,8 +731,8 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayPasC(
       consumer,
       compute_at_axis,
       root_map,
-      replay_resize,
-      replay_swizzle);
+      replay_swizzle,
+      replay_resize);
 }
 
 std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
