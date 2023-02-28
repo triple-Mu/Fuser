@@ -699,9 +699,7 @@ struct ForwardingInfo {
   std::unordered_map<IterDomain*, std::vector<IterDomain*>>
       consumer_compliment_map;
 
-  ForwardingInfo(
-      const TensorView* producer,
-      const TensorView* consumer) {
+  ForwardingInfo(const TensorView* producer, const TensorView* consumer) {
     // Either producer or consumer maps depending on operation
     std::unordered_map<IterDomain*, IterDomain*>* active_forwarding_map =
         nullptr;

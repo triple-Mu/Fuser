@@ -522,7 +522,11 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
   // axis that those ops match.
   //
   // Note on skip_swizzles: Similar constraints apply in replayPasC. See the
-  // corresponding notes there on not skipping swizzles in the matching here.
+  // corresponding notes there on not skipping swizzles in the
+  // matching here.
+  //
+  // The consumer may have resize, which replayCasP skips and forwards
+  // the mapping to the output domain of the resize.
   BestEffortReplay forward_replay = BestEffortReplay::replayCasP(
       consumer, producer, producer_pos, root_map, false, !replay_swizzle, true);
 
@@ -749,7 +753,8 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
 int TransformReplay::getMatchedLeafPosWithoutReplayPasC(
     const TensorView* producer,
     const TensorView* consumer,
-    int consumer_pos) {
+    int consumer_pos,
+    bool skip_resize) {
   FUSER_PERF_SCOPE("transform_replay.cpp::getMatchedLeafPosWithoutReplayPasC");
 
   const auto pairwise_map = PairwiseRootDomainMap(producer, consumer);
@@ -777,7 +782,8 @@ int TransformReplay::getMatchedLeafPosWithoutReplayPasC(
   auto it_producer = producer_domain.begin();
 
   auto disjoint_sets =
-      BestEffortReplay::replayPasC(producer, consumer, -1, pairwise_map)
+      BestEffortReplay::replayPasC(
+          producer, consumer, -1, pairwise_map, true, true, skip_resize)
           .getIterDomainEquivalence();
 
   int mismatched_consumer_pos = 0;
@@ -818,7 +824,8 @@ int TransformReplay::getMatchedLeafPosWithoutReplayPasC(
 int TransformReplay::getMatchedLeafPosWithoutReplayCasP(
     const TensorView* consumer,
     const TensorView* producer,
-    int producer_pos) {
+    int producer_pos,
+    bool skip_resize) {
   FUSER_PERF_SCOPE("transform_replay.cpp::getMatchedLeafPosWithoutReplayCasP");
 
   const auto pairwise_map = PairwiseRootDomainMap(producer, consumer);
@@ -850,7 +857,8 @@ int TransformReplay::getMatchedLeafPosWithoutReplayCasP(
   auto it_consumer = consumer_domain.begin();
 
   auto disjoint_sets =
-      BestEffortReplay::replayPasC(producer, consumer, -1, pairwise_map)
+      BestEffortReplay::replayPasC(
+          producer, consumer, -1, pairwise_map, true, true, skip_resize)
           .getIterDomainEquivalence();
 
   int mismatched_producer_pos = 0;
@@ -947,7 +955,7 @@ void TransformPropagator::propagateC2P(TensorView* from, TensorView* to) {
   // information on how to do the correct transformation. The logic below tells
   // TransformPropagator to skip the replay when not necessary.
   int new_pos =
-      TransformReplay::getMatchedLeafPosWithoutReplayPasC(to, from, pos);
+      TransformReplay::getMatchedLeafPosWithoutReplayPasC(to, from, pos, true);
   bool debug = isDebugDumpEnabled(DebugDumpOption::TransformPropagator);
   if (debug) {
     std::cout << "TransformPropagator::propagateC2P" << std::endl;
@@ -978,7 +986,7 @@ void TransformPropagator::propagateP2C(TensorView* from, TensorView* to) {
   int pos = replayed_pos_.at(from);
   // See note [Using multiple TransformPropagators]
   int new_pos =
-      TransformReplay::getMatchedLeafPosWithoutReplayCasP(to, from, pos);
+      TransformReplay::getMatchedLeafPosWithoutReplayCasP(to, from, pos, true);
   bool debug = isDebugDumpEnabled(DebugDumpOption::TransformPropagator);
   if (debug) {
     std::cout << "TransformPropagator::propagateP2C" << std::endl;
@@ -1049,7 +1057,7 @@ void MostInlinedTransformPropagator::propagateC2P(
   int pos = from->nDims();
   // See note [Using multiple TransformPropagators]
   int new_pos =
-      TransformReplay::getMatchedLeafPosWithoutReplayPasC(to, from, pos);
+      TransformReplay::getMatchedLeafPosWithoutReplayPasC(to, from, pos, true);
   bool debug = isDebugDumpEnabled(DebugDumpOption::TransformPropagator);
   if (debug) {
     std::cout << "MostInlinedTransformPropagator::propagateC2P" << std::endl;
@@ -1080,7 +1088,7 @@ void MostInlinedTransformPropagator::propagateP2C(
   int pos = from->nDims();
   // See note [Using multiple TransformPropagators]
   int new_pos =
-      TransformReplay::getMatchedLeafPosWithoutReplayCasP(to, from, pos);
+      TransformReplay::getMatchedLeafPosWithoutReplayCasP(to, from, pos, true);
   bool debug = isDebugDumpEnabled(DebugDumpOption::TransformPropagator);
   if (debug) {
     std::cout << "MostInlinedTransformPropagator::propagateP2C" << std::endl;

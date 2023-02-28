@@ -340,8 +340,6 @@ void IterDomainGraph::build(Fusion* fusion) {
     const auto& domain = tv->domain()->domain();
     auto all_ids = ir_utils::allIDsOf(tv);
 
-    // std::cerr << "TV: " << tv->toString() << std::endl;
-
     // Check is this domain is a consumer of a view-like operation
     bool view_like_domain = tv->domain()->hasViewLikeRFactor();
 
@@ -360,11 +358,6 @@ void IterDomainGraph::build(Fusion* fusion) {
       }
       bool is_leaf_id =
           std::find(domain.begin(), domain.end(), id) != domain.end();
-#if 0
-      std::cerr << "Init: " << id->toString()
-                << ", is_view: " << is_view_rfactor_id
-                << ", leaf: " << is_leaf_id << std::endl;
-#endif
       initializeId(id, is_view_rfactor_id, is_leaf_id);
     }
   }
@@ -451,19 +444,15 @@ void IterDomainGraph::build(Fusion* fusion) {
         // producer as consumer. We use the symmetric API of BestEffortReplay so
         // that both broadcast and squeeze are handled correctly.
         const auto permissive_disjoint_sets =
-            BestEffortReplay::replayPasC(p_tv, c_tv, -1, pairwise_map)
+            BestEffortReplay::replayPasC(
+                p_tv, c_tv, -1, pairwise_map, true, true, false)
                 .getIterDomainEquivalence();
 
-        if (c_tv->name() == 3 && p_tv->name() == 2) {
-          // std::cerr << "BestEffort replay for resize\n";
-        }
+        // Permissive-Resize map allows mappings of resize inputs and outputs
         const auto permissive_resize_disjoint_sets =
             BestEffortReplay::replayPasC(
                 p_tv, c_tv, -1, pairwise_map, true, true, true)
                 .getIterDomainEquivalence();
-        if (c_tv->name() == 3 && p_tv->name() == 2) {
-          // std::cerr << "BestEffort replay for resize done\n";
-        }
 
         // For exact mapings do not map any broadcast dimensions to
         // non-broadcast dimensions. Prevent any broadcasted axes being mapped

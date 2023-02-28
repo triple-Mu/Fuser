@@ -279,6 +279,7 @@ class TORCH_CUDA_CU_API BestEffortReplay {
   void skipResizes();
 
  public:
+  // When skip_resize is true, resize is ignored or in other words forwarded
   BestEffortReplay(
       const std::vector<IterDomain*>& replay_domain,
       const std::vector<IterDomain*>& target_domain,
@@ -331,6 +332,8 @@ class TORCH_CUDA_CU_API BestEffortReplay {
 
   // Runs a best effort replay that ignores broadcast axes that appear in
   // consumer that are not mapped to producer in root_map.
+  //
+  // When skip_resize is true, resize is ignored or in other words forwarded
   static BestEffortReplay replayCasP(
       const TensorView* consumer,
       const TensorView* producer,
@@ -339,10 +342,11 @@ class TORCH_CUDA_CU_API BestEffortReplay {
       bool skip_consumer_swizzle = true,
       bool skip_producer_swizzle = true,
       bool skip_resize = true);
-  // TODO: change it to false
 
   // Runs a best effort replay that ignores broadcast axes that appear in
   // consumer that are not mapped to producer in root_map.
+  //
+  // When skip_resize is true, resize is ignored or in other words forwarded
   static BestEffortReplay replayPasC(
       const TensorView* producer,
       const TensorView* consumer,
@@ -350,7 +354,7 @@ class TORCH_CUDA_CU_API BestEffortReplay {
       const RootDomainMap& root_map,
       bool skip_producer_swizzle = true,
       bool skip_consumer_swizzle = true,
-      bool skip_resize = false);
+      bool skip_resize = true);
 
   // Find the first position i where td1[i] is not the same as td2[i]. "Same"
   // means the DAG and input IDs to generate td1[i] and td2[i] are the same.
