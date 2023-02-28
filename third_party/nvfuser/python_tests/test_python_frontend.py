@@ -45,6 +45,7 @@ class TestNvFuserFrontend(TestCase):
         with FusionDefinition() as fd:
             fusion_func(fd)
         fd_str = fd.__repr__()
+        torch.manual_seed(0)
         out = fd.execute(inputs)
 
         # Execute the python definition that was captured
@@ -52,6 +53,7 @@ class TestNvFuserFrontend(TestCase):
         exec(fd_str)
         with FusionDefinition() as fd_cap:
             eval(func_name)(fd_cap)
+        torch.manual_seed(0)
         out_cap = fd_cap.execute(inputs_cap)
 
         # Make sure the original and captured definitions match
@@ -888,6 +890,55 @@ class TestNvFuserFrontend(TestCase):
         nvf_out = fd.execute(inputs, override_user_schedule=True)
         self.assertEqual(nvf_user_out, nvf_out)
 
+    def test_normal(self):
+        input_size = [64, 128, 1024]
+        dtype = torch.float32
+        device = 'cuda'
+        inputs = [
+            torch.randn(*input_size, device=device, dtype=dtype),
+        ]
+        mean = 3.7
+        std = 2.5
+
+        def fusion_func(fd: FusionDefinition) :
+            t0 = fd.from_pytorch(inputs[0])
+            s_mean = fd.define_constant(mean)
+            s_std = fd.define_constant(std)
+            size = fd.ops.tensor_sizes(t0)
+            t1 = fd.ops.normal(s_mean, s_std, size, DataType.Double)
+            fd.add_output(t1)
+
+        nvf_out, _ = self.exec_nvfuser(fusion_func, inputs)
+
+        # Is there a better way to test distribution?!
+        self.assertTrue(nvf_out[0].mean().cpu().float().isclose(torch.tensor(mean), rtol=1e-2, atol=1e-2).item())
+        self.assertTrue(nvf_out[0].std().cpu().float().isclose(torch.tensor(std), rtol=1e-2, atol=1e-2).item())
+
+    def test_uniform(self):
+        input_size = [64, 128, 1024]
+        dtype = torch.float32
+        device = 'cuda'
+        inputs = [
+            torch.randn(*input_size, device=device, dtype=dtype),
+        ]
+        lo = 1.8
+        hi = 1223.5
+
+        def fusion_func(fd: FusionDefinition) :
+            t0 = fd.from_pytorch(inputs[0])
+            s_lo = fd.define_constant(lo)
+            s_hi = fd.define_constant(hi)
+            size = fd.ops.tensor_sizes(t0)
+            t1 = fd.ops.uniform(s_lo, s_hi, size, DataType.Double)
+            fd.add_output(t1)
+
+        nvf_out, _ = self.exec_nvfuser(fusion_func, inputs)
+
+        # Is there a better way to test distribution?!
+        self.assertTrue(nvf_out[0].mean().cpu().float().isclose(torch.tensor((hi-lo)/2.0), rtol=1e-2, atol=1e-2).item())
+        self.assertTrue(nvf_out[0].min().cpu().float().isclose(torch.tensor(lo), rtol=1e-2, atol=1e-2).item())
+        self.assertTrue(nvf_out[0].max().cpu().float().isclose(torch.tensor(hi), rtol=1e-2, atol=1e-2).item())
+
     def test_where_dtypes(self):
         inputs = [
             torch.arange(2, device="cuda").type(torch.bool),
@@ -1065,6 +1116,137 @@ class TestNvFuserFrontend(TestCase):
         self.assertEqual(at_rfloat, rfloat)
         self.assertEqual(at_rdouble, rdouble)
 
+    def test_shape(self):
+        inputs = [
+            # test with both one and multiple dimensions
+            torch.randn(3, device="cuda", dtype=torch.float32),
+            torch.randn(3, 4, 5, device="cuda", dtype=torch.float32),
+        ]
+
+        def fusion_func(fd: FusionDefinition):
+            t0 = fd.from_pytorch(inputs[0])
+            t1 = fd.from_pytorch(inputs[1])
+
+            assert isinstance(t0._get_fusion_definition(), FusionDefinition)
+
+            (B,) = t0.shape
+            t2 = fd.ops.mul(t0, B)
+
+            assert len(t1.shape) == t1.ndim
+
+            B, C, W = t1.shape
+            t3 = fd.ops.div(t1, C)
+
+            fd.add_output(t2)
+            fd.add_output(t3)
+
+        nvf_out, _ = self.exec_nvfuser(fusion_func, inputs)
+
+        at_out1 = inputs[0] * inputs[0].shape[0]
+        at_out2 = inputs[1] / inputs[1].shape[1]
+
+        self.assertEqual(at_out1, nvf_out[0])
+        self.assertEqual(at_out2, nvf_out[1])
+
+    def test_arithmetic_ops(self):
+        inputs = [
+            torch.randn(3, 4, 5, device="cuda", dtype=torch.float32),
+        ]
+
+        def fusion_func(fd: FusionDefinition):
+            t0 = fd.from_pytorch(inputs[0])
+
+            c0 = fd.define_constant(1.0)
+
+            t1 = -t0
+            t2 = abs(t0)
+            c1 = -c0
+            c2 = abs(c0)
+
+            # Using literals like this will work once
+            # https://github.com/csarofeen/pytorch/pull/2449 is merged
+            # t3 = -t1 * (1 + t0 ** 2) / t2 + c2 ** c1 - 1.0
+            t3 = -t1 * (c0 - t0 * t0) / t2 + c2**c1 - c0
+
+            fd.add_output(t1)
+            fd.add_output(t2)
+            fd.add_output(t3)
+
+        nvf_out, _ = self.exec_nvfuser(fusion_func, inputs)
+
+        at_out0 = -inputs[0]
+        at_out1 = abs(inputs[0])
+        at_out2 = inputs[0] * (1.0 - inputs[0] * inputs[0]) / abs(inputs[0])
+
+        self.assertEqual(at_out0, nvf_out[0])
+        self.assertEqual(at_out1, nvf_out[1])
+        self.assertEqual(at_out2, nvf_out[2])
+
+    def test_op_methods(self):
+        inputs = [
+            torch.randn(3, 4, 5, device="cuda", dtype=torch.float32),
+        ]
+
+        def fusion_func(fd: FusionDefinition):
+            t0 = fd.from_pytorch(inputs[0])
+            c0 = fd.define_constant(0.5)
+
+            c1 = c0.neg()
+            c2 = c0.abs()
+
+            o0 = t0.neg()
+            o1 = t0.abs()
+            o2 = t0.sum([0])
+            o3 = (t0 > c0).where(t0, c0)
+            o4 = t0.relu()
+            o5 = o0.addcmul(o1, o4, c1)
+            o6 = o2.cast(DataType.Double)
+            o7 = o1.add_alpha(o2, c0)
+            o8 = o1.var([1], correction=1)
+            _, o9 = o1.var_mean([1], correction=1)
+            o10 = t0.reshape([3, 4, 5], [3 * 4, 1, 5])
+            o11 = o10.squeeze([3 * 4, 1, 5], [1])
+
+            fd.add_output(o0)
+            fd.add_output(o1)
+            fd.add_output(o2)
+            fd.add_output(o3)
+            fd.add_output(o4)
+            fd.add_output(o5)
+            fd.add_output(o6)
+            fd.add_output(o7)
+            fd.add_output(o8)
+            fd.add_output(o9)
+            fd.add_output(o10)
+            fd.add_output(o11)
+
+        nvf_out, _ = self.exec_nvfuser(fusion_func, inputs)
+
+        torch_out = [
+            -inputs[0],
+            abs(inputs[0]),
+            inputs[0].sum([0]),
+            torch.where(inputs[0] > 0.5, inputs[0], torch.tensor(0.5)),
+            inputs[0].relu(),
+            torch.addcmul(
+                -inputs[0],
+                abs(inputs[0]),
+                inputs[0].relu(),
+                value=-0.5,
+            ),
+            inputs[0].sum([0]).type(torch.float64),
+            torch.add(abs(inputs[0]), inputs[0].sum([0]), alpha=0.5),
+            abs(inputs[0]).var([1], unbiased=True),
+            abs(inputs[0]).mean([1]),
+            inputs[0].reshape([3 * 4, 1, 5]),
+            inputs[0].reshape([3 * 4, 5]),
+        ]
+
+        assert len(nvf_out) == len(torch_out)
+
+        for (n, t) in zip(nvf_out, torch_out):
+            self.assertEqual(n, t)
+
     def test_all_dim_var_mean(self):
         inputs = [torch.randn(2, 2, 2, device="cuda")]
 
@@ -1125,6 +1307,38 @@ class TestNvFuserFrontend(TestCase):
         torch_out = torch.addcmul(*inputs, value=0.1)
 
         self.assertEqual(nvfout[0], torch_out)
+
+    def test_prod(self) :
+        inputs = [
+            torch.ones(2, 4, 8, device='cuda'),
+        ]
+
+        def fusion_func(fd: FusionDefinition) :
+            t0 = fd.from_pytorch(inputs[0])
+
+            t1 = fd.ops.prod(t0, DataType.Float)
+            t2 = fd.ops.prod(t0, 1, False, DataType.Float)
+            t3 = fd.ops.prod(t0, 1, True, DataType.Float)
+            t4 = fd.ops.prod(t0, [-1], False, DataType.Float)
+
+            fd.add_output(t1)
+            fd.add_output(t2)
+            fd.add_output(t3)
+            fd.add_output(t4)
+
+        nvf_out, _ = self.exec_nvfuser(fusion_func, inputs)
+
+        eager_outs = [
+            torch.prod(inputs[0], dtype=torch.float32),
+            torch.prod(inputs[0], 1, False, dtype=torch.float32),
+            torch.prod(inputs[0], 1, True, dtype=torch.float32),
+            torch.prod(inputs[0], -1, False, dtype=torch.float32),
+        ]
+        assert len(nvf_out) == len(eager_outs)
+
+        for n, e in zip(nvf_out, eager_outs):
+            self.assertEqual(n, e)
+
 
 if __name__ == '__main__':
     run_tests()
