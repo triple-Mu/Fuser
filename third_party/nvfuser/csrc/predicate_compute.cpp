@@ -321,6 +321,7 @@ std::size_t UnswitchPredicateKeyHash::operator()(
 Bool* PredicateCompute::getInlinePredicate(
     const Expr* expr,
     const std::vector<kir::ForLoop*>& loops,
+    const std::unordered_set<kir::ForLoop*>& rotated_loops,
     Bool* thread_pred,
     PredicateType pred_type) {
   FUSER_PERF_SCOPE("GpuLower::Lower::getInlinePredicate");
@@ -352,7 +353,11 @@ Bool* PredicateCompute::getInlinePredicate(
   }
 
   auto pred_info_vec = Index::getReferenceRootPredicates(
-      out_tv, loops, nullptr, pred_type == PredicateType::Padding);
+      out_tv,
+      loops,
+      rotated_loops,
+      nullptr,
+      pred_type == PredicateType::Padding);
 
   std::vector<Bool*> preds;
 
@@ -451,7 +456,7 @@ void UnswitchPredicate::predicateOn(Expr* tv_expr) {
   TORCH_INTERNAL_ASSERT(out_tv != nullptr, "Missing TensorView output");
 
   auto ref_pred_info = Index::getReferenceRootPredicates(
-      out_tv, for_loops_, unrolled_loop_, false);
+      out_tv, for_loops_, rotated_loop_, unrolled_loop_, false);
 
   // If RootPredicateInfo has a static predicate that is more
   // restrictive than the current one, replace the current with the
@@ -601,6 +606,27 @@ void UnswitchPredicate::openLoop(kir::ForLoop* fl) {
 void UnswitchPredicate::openIte(kir::IfThenElse* ite) {
   FUSER_PERF_SCOPE("GpuLower::Lower::UnswitchPredicate::openIte");
 
+  // Loop rotation transform loops like
+  //  for i ...
+  //    statement1(i)
+  //    statement2(i)
+  //    statement3(i)
+  //    statement4(i)
+  // into
+  //  statement1(0)
+  //  statement2(0)
+  //  for i ...
+  //    statement3(i)
+  //    statement4(i)
+  //    if LoopRotation:
+  //      statement1(i+1)
+  //      statement2(i+1)
+  // So when we see an `if LoopRotation` during visiting, the last loop is
+  // rotated, and we need to use `i+1` instead of `i` as loop index.
+  if (ite->predicate()->predicate_type() == PredicateType::LoopRotation) {
+    rotated_loop_.insert(for_loops_.back());
+  }
+
   // only expand the ite thenBody
   for (auto expr : ite->thenBody().exprs()) {
     if (ir_utils::isTvOp(expr) || isTensorIndexOp(expr)) {
@@ -610,6 +636,10 @@ void UnswitchPredicate::openIte(kir::IfThenElse* ite) {
     } else if (auto for_loop = dynamic_cast<kir::ForLoop*>(expr)) {
       openLoop(for_loop);
     }
+  }
+
+  if (ite->predicate()->predicate_type() == PredicateType::LoopRotation) {
+    rotated_loop_.erase(for_loops_.back());
   }
 }
 

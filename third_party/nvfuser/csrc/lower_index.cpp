@@ -21,6 +21,7 @@ Val* IndexLowering::lowerSrcIndex(
         tv,
         dst->as<TensorView>(),
         for_loops_,
+        getRotatedLoop(),
         override_index,
         cvta_smem_address);
   } else {
@@ -34,7 +35,7 @@ Val* IndexLowering::lowerDstIndex(
     bool cvta_smem_address) const {
   if (auto tv = dynamic_cast<TensorView*>(dst)) {
     return Index::getConsumerIndex(
-        tv, for_loops_, override_index, cvta_smem_address);
+        tv, for_loops_, getRotatedLoop(), override_index, cvta_smem_address);
   } else {
     return dst;
   }
@@ -67,6 +68,27 @@ void IndexLowering::insertAtTopLevel(Expr* expr) {
 void IndexLowering::handle(const kir::IfThenElse* ite) {
   const auto prev_scope = active_scope_;
 
+  // Loop rotation transform loops like
+  //  for i ...
+  //    statement1(i)
+  //    statement2(i)
+  //    statement3(i)
+  //    statement4(i)
+  // into
+  //  statement1(0)
+  //  statement2(0)
+  //  for i ...
+  //    statement3(i)
+  //    statement4(i)
+  //    if LoopRotation:
+  //      statement1(i+1)
+  //      statement2(i+1)
+  // So when we see an `if LoopRotation` during visiting, the last loop is
+  // rotated, and we need to use `i+1` instead of `i` as loop index.
+  if (ite->predicate()->predicate_type() == PredicateType::LoopRotation) {
+    rotated_loop_.insert(for_loops_.back());
+  }
+
   auto new_ite = IrBuilder::create<kir::IfThenElse>(ite->predicate());
   pushBack(new_ite);
 
@@ -83,6 +105,10 @@ void IndexLowering::handle(const kir::IfThenElse* ite) {
   }
 
   active_scope_ = prev_scope;
+
+  if (ite->predicate()->predicate_type() == PredicateType::LoopRotation) {
+    rotated_loop_.erase(for_loops_.back());
+  }
 }
 
 void IndexLowering::handle(const kir::ForLoop* for_loop) {
@@ -109,7 +135,8 @@ void IndexLowering::handle(const RNGOp* rop) {
   TORCH_INTERNAL_ASSERT(out_tv != nullptr, "rand scalar not yet supported");
 
   // TensorIndex for philox subsequence and component.
-  auto philox_index = Index::getLinearLogicalIndex(out_tv, for_loops_);
+  auto philox_index =
+      Index::getLinearLogicalIndex(out_tv, for_loops_, getRotatedLoop());
   philox_index = GpuLower::current()->commonScalarMap().hoistScalar(
       philox_index, for_loops_);
 
@@ -150,8 +177,13 @@ void IndexLowering::handle(const IotaOp* aop) {
 
   // TensorIndex for writing iota output.
   const auto out = lowerDstIndex(out_tv);
-  auto result =
-      Index::iota(out_tv, for_loops_, aop->start(), aop->step(), aop->dtype());
+  auto result = Index::iota(
+      out_tv,
+      for_loops_,
+      getRotatedLoop(),
+      aop->start(),
+      aop->step(),
+      aop->dtype());
   auto lowered = IrBuilder::create<UnaryOp>(UnaryOpType::Set, out, result);
 
   pushBack(lowered);
@@ -164,7 +196,7 @@ void IndexLowering::handle(const EyeOp* eop) {
 
   // TensorIndex for writing eye output.
   const auto out = lowerDstIndex(out_tv);
-  auto result = Index::eye(out_tv, for_loops_, eop->dtype());
+  auto result = Index::eye(out_tv, for_loops_, getRotatedLoop(), eop->dtype());
   auto lowered = IrBuilder::create<UnaryOp>(UnaryOpType::Set, out, result);
 
   pushBack(lowered);
@@ -277,6 +309,7 @@ void IndexLowering::handle(const ViewAsScalar* uop) {
             loop->iter_domain(),
             uop->vector_id()->as<IterDomain>(),
             IdMappingMode::LOOP)) {
+      // TODO: this doesn't work with loop rotation
       Val* index = loop->index();
       pushBack(
           IrBuilder::create<ViewAsScalar>(out, in, uop->vector_id(), index));
@@ -445,7 +478,7 @@ Val* getEntranceLinIndGridReduce(std::vector<kir::ForLoop*>& for_loops) {
       // already accounted for.
       continue;
     }
-    // TODO: Does this work for shift/gather?
+    // TODO: Does this work for shift/gather/loop rotation?
     linear_index = SimplifyingIrBuilder::addExpr(
         SimplifyingIrBuilder::mulExpr(
             linear_index, loop->iter_domain()->extent()),

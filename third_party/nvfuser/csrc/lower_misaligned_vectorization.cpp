@@ -46,6 +46,35 @@ class MisalignedVectorizationModifier : public kir::ExprMutator {
     }
   }
 
+  void handle(kir::IfThenElse* ite) final {
+    // Loop rotation transform loops like
+    //  for i ...
+    //    statement1(i)
+    //    statement2(i)
+    //    statement3(i)
+    //    statement4(i)
+    // into
+    //  statement1(0)
+    //  statement2(0)
+    //  for i ...
+    //    statement3(i)
+    //    statement4(i)
+    //    if LoopRotation:
+    //      statement1(i+1)
+    //      statement2(i+1)
+    // So when we see an `if LoopRotation` during visiting, the last loop is
+    // rotated, and we need to use `i+1` instead of `i` as loop index.
+    if (ite->predicate()->predicate_type() == PredicateType::LoopRotation) {
+      rotated_loop_.insert(for_loops_.back());
+    }
+
+    kir::ExprMutator::handle(ite);
+
+    if (ite->predicate()->predicate_type() == PredicateType::LoopRotation) {
+      rotated_loop_.erase(for_loops_.back());
+    }
+  }
+
   struct ReferenceTensors {
     // Input TensorView to Vectorize Set operation
     TensorView* in_tv = nullptr;
@@ -108,15 +137,16 @@ class MisalignedVectorizationModifier : public kir::ExprMutator {
       kir::IfThenElse* parent_scope_ite) {
     // Generate vectorize index
     auto tensor_index = (tensors.out_tv->getMemoryType() == MemoryType::Global)
-        ? Index::getConsumerStridedIndices(tensors.out_tv, for_loop_structure)
+        ? Index::getConsumerStridedIndices(
+              tensors.out_tv, for_loop_structure, rotated_loop_)
         : Index::getProducerStridedIndices(
-              tensors.in_tv, tensors.out_tv, for_loop_structure);
+              tensors.in_tv, tensors.out_tv, for_loop_structure, rotated_loop_);
     auto last_index = (tensors.out_tv->getMemoryType() == MemoryType::Global)
         ? Index::getGlobalConsumerStridedIndices(
-              tensors.out_tv, for_loop_structure)
+              tensors.out_tv, for_loop_structure, rotated_loop_)
               .back()
         : Index::getGlobalProducerStridedIndices(
-              tensors.in_tv, tensors.out_tv, for_loop_structure)
+              tensors.in_tv, tensors.out_tv, for_loop_structure, rotated_loop_)
               .back();
 
     // >>>>>>>>>>>>>
@@ -380,6 +410,7 @@ class MisalignedVectorizationModifier : public kir::ExprMutator {
       // Predicate the loop body if pred_stop is not null. This is to
       // make sure the loop itself is completely unrollable.
       if (pred_stop != nullptr) {
+        // TODO: this doesn't work with loop rotation
         auto body_pred = IrBuilder::create<kir::Predicate>(
             IrBuilder::ltExpr(new_loop->index(), pred_stop)->as<Bool>());
         auto body_ite = IrBuilder::create<kir::IfThenElse>(body_pred);
@@ -523,6 +554,9 @@ class MisalignedVectorizationModifier : public kir::ExprMutator {
     TORCH_INTERNAL_ASSERT(namedScalar->definition() != nullptr);
     return namedScalar;
   }
+
+  // Keep track of the loop in which the currently visiting expr is a rotated.
+  std::unordered_set<kir::ForLoop*> rotated_loop_;
 };
 
 } // namespace

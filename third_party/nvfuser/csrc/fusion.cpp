@@ -80,6 +80,8 @@ IrCloner Fusion::copy(const Fusion* from, Fusion* to) {
     to->io_alias_[copied_output] = copied_input;
   }
 
+  to->loop_rotation_param_ = ir_cloner.clone(from->loop_rotation_param_);
+
   to->permuted_input_map_ = from->permuted_input_map_;
   to->permuted_output_map_ = from->permuted_output_map_;
 
@@ -138,6 +140,7 @@ void Fusion::clear() noexcept {
 
   permuted_input_map_.clear();
   permuted_output_map_.clear();
+  loop_rotation_param_.clear();
 
   all_tv_uses_valid_ = false;
   is_during_update_uses_ = false;

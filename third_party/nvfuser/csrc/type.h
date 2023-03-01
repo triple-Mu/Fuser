@@ -43,6 +43,7 @@ enum class ValType {
 // Shift - ShiftPredicateInserter::getShiftPredicate
 // Padding - ShiftPredicateInserter::getPaddingPredicate
 // ReductionWrite - Same as Inline but without reduction axes
+// LoopRotation - Predicate added by loop rotation, currently always true.
 enum class PredicateType {
   Manual,
   Inline,
@@ -51,7 +52,8 @@ enum class PredicateType {
   Misaligned,
   Shift,
   Padding,
-  ReductionWrite
+  ReductionWrite,
+  LoopRotation
 };
 
 // Index type is a convenience type that may be a 64 or 32 signed integer.

@@ -129,7 +129,8 @@ auto parseDebugDumpOptions() {
       {"sync_map", DebugDumpOption::SyncMap},
       {"lower_verbose", DebugDumpOption::LowerVerbose},
       {"expr_simplify", DebugDumpOption::ExprSimplification},
-      {"expr_sort", DebugDumpOption::ExprSort}};
+      {"expr_sort", DebugDumpOption::ExprSort},
+      {"loop_rotation", DebugDumpOption::LoopRotation}};
 
   return parseEnvOptions("PYTORCH_NVFUSER_DUMP", available_options);
 }

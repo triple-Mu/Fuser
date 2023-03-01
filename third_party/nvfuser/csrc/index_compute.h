@@ -307,12 +307,14 @@ class Index {
       TensorView* producer,
       const TensorView* consumer,
       const std::vector<kir::ForLoop*>& loops,
+      const std::unordered_set<kir::ForLoop*>& rotated_loops,
       const std::unordered_map<IterDomain*, Val*>& override_index = {});
 
   // Consumer indexing if it's in shared or local memory
   static std::vector<Val*> getNonGlobalConsumerStridedIndices(
       const TensorView* consumer,
       const std::vector<kir::ForLoop*>& loops,
+      const std::unordered_set<kir::ForLoop*>& rotated_loops,
       const std::unordered_map<IterDomain*, Val*>& override_index = {});
 
   // get the strides of a tensor used for the index lowering
@@ -330,12 +332,14 @@ class Index {
       TensorView* producer,
       const TensorView* consumer,
       const std::vector<kir::ForLoop*>& loops,
+      const std::unordered_set<kir::ForLoop*>& rotated_loops,
       const std::unordered_map<IterDomain*, Val*>& override_index = {});
 
   // Consumer indexing if it's in global memory
   static std::vector<Val*> getGlobalConsumerStridedIndices(
       const TensorView* consumer,
       const std::vector<kir::ForLoop*>& loops,
+      const std::unordered_set<kir::ForLoop*>& rotated_loops,
       const std::unordered_map<int, Val*>& override_index = {});
 
   // Indexing functions
@@ -351,6 +355,7 @@ class Index {
       TensorView* producer,
       const TensorView* consumer,
       const std::vector<kir::ForLoop*>& loops,
+      const std::unordered_set<kir::ForLoop*>& rotated_loops,
       const std::unordered_map<IterDomain*, Val*>& override_index = {},
       bool cvta_smem_address = false);
 
@@ -358,6 +363,7 @@ class Index {
   static kir::TensorIndex* getConsumerIndex(
       TensorView* consumer,
       const std::vector<kir::ForLoop*>& loops,
+      const std::unordered_set<kir::ForLoop*>& rotated_loops,
       const std::unordered_map<int, Val*>& override_index = {},
       bool cvta_smem_address = false);
 
@@ -369,6 +375,7 @@ class Index {
       TensorView* producer,
       const TensorView* consumer,
       const std::vector<kir::ForLoop*>& loops,
+      const std::unordered_set<kir::ForLoop*>& rotated_loops,
       const std::unordered_map<IterDomain*, Val*>& override_index = {},
       bool cvta_smem_address = false);
 
@@ -379,6 +386,7 @@ class Index {
   static Val* getConsumerStridedIndices(
       TensorView* consumer,
       const std::vector<kir::ForLoop*>& loops,
+      const std::unordered_set<kir::ForLoop*>& rotated_loops,
       const std::unordered_map<int, Val*>& override_index = {},
       bool cvta_smem_address = false);
 
@@ -388,7 +396,8 @@ class Index {
   //! rand (for Philox pseudo random sequences)
   static Val* getLinearLogicalIndex(
       TensorView* consumer_tv,
-      const std::vector<kir::ForLoop*>& loops);
+      const std::vector<kir::ForLoop*>& loops,
+      const std::unordered_set<kir::ForLoop*>& rotated_loops);
 
   //! Returns a vector of logical indices mapped onto the (rfactor)
   //! root domain of a consumer tensor. The returned index is intended
@@ -396,7 +405,8 @@ class Index {
   //! eye
   static std::vector<Val*> getPerDimLogicalIndex(
       TensorView* consumer_tv,
-      const std::vector<kir::ForLoop*>& loops);
+      const std::vector<kir::ForLoop*>& loops,
+      const std::unordered_set<kir::ForLoop*>& rotated_loops);
 
   //! Take a consumer tensorview and loop nest and generates predicates
   //! associated with the concrete roots of the loop nest. Returns a list of
@@ -423,6 +433,7 @@ class Index {
   static std::vector<RootPredicateInfo> getReferenceRootPredicates(
       TensorView* consumer_tv,
       const std::vector<kir::ForLoop*>& loops,
+      const std::unordered_set<kir::ForLoop*>& rotated_loops,
       kir::ForLoop* unswitch_or_vec_loop,
       bool padding_predicate);
 
@@ -430,6 +441,7 @@ class Index {
   static Val* iota(
       TensorView* consumer_tv,
       const std::vector<kir::ForLoop*>& loops,
+      const std::unordered_set<kir::ForLoop*>& rotated_loops,
       Val* start,
       Val* step,
       DataType dtype);
@@ -438,6 +450,7 @@ class Index {
   static Val* eye(
       TensorView* consumer_tv,
       const std::vector<kir::ForLoop*>& loops,
+      const std::unordered_set<kir::ForLoop*>& rotated_loops,
       DataType dtype);
 };
 
@@ -451,6 +464,7 @@ std::pair<
 indexMapFromTV(
     const TensorView* tv,
     const std::vector<kir::ForLoop*>& loops,
+    const std::unordered_set<kir::ForLoop*>& rotated_loops,
     kir::ForLoop* alloc_loop,
     bool as_consumer,
     kir::ForLoop* double_buffer_loop = nullptr);

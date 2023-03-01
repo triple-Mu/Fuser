@@ -549,5 +549,13 @@ void propagateViewTransforms(Fusion* fusion, const ComputeAtMap& ca_map);
 //! Check if tv is an output of a fastest-dim reduction
 bool isFastestDimReduction(TensorView* tv);
 
+// A wrapper for Fusion::rotateLoop that provide more consistent interace
+inline void rotateLoop(
+    TensorView* loop_tv,
+    int64_t axis,
+    std::unordered_set<Statement*> selection) {
+  loop_tv->fusion()->rotateLoop(loop_tv, axis, std::move(selection));
+}
+
 } // namespace scheduler_utils
 } // namespace nvfuser

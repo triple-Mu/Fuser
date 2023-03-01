@@ -72,6 +72,7 @@ list(APPEND NVFUSER_SRCS
     ${NVFUSER_SRCS_DIR}/lower_scalar_hoist.cpp
     ${NVFUSER_SRCS_DIR}/lower_insert_syncs.cpp
     ${NVFUSER_SRCS_DIR}/lower_instrument.cpp
+    ${NVFUSER_SRCS_DIR}/lower_loop_rotation.cpp
     ${NVFUSER_SRCS_DIR}/lower_loops.cpp
     ${NVFUSER_SRCS_DIR}/lower_magic_zero.cpp
     ${NVFUSER_SRCS_DIR}/lower_misaligned_vectorization.cpp
@@ -343,6 +344,7 @@ if(BUILD_TEST)
   list(APPEND JIT_TEST_SRCS ${NVFUSER_ROOT}/test/test_gpu_tensor_factories.cpp)
   list(APPEND JIT_TEST_SRCS ${NVFUSER_ROOT}/test/test_gpu_fused_reduction.cpp)
   list(APPEND JIT_TEST_SRCS ${NVFUSER_ROOT}/test/test_gpu_outer_reduction.cpp)
+  list(APPEND JIT_TEST_SRCS ${NVFUSER_ROOT}/test/test_gpu_loop_rotation.cpp)
   list(APPEND JIT_TEST_SRCS ${NVFUSER_ROOT}/test/test_gpu_shift.cpp)
   list(APPEND JIT_TEST_SRCS ${NVFUSER_ROOT}/test/test_gpu_tensorcore.cpp)
   list(APPEND JIT_TEST_SRCS ${NVFUSER_ROOT}/test/test_gpu_matmul_sass.cpp)
