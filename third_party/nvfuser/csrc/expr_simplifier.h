@@ -564,8 +564,15 @@ RegisterType getRegisterType(Val* value);
 // scalars, regardless of if it is inside `variables` or not.
 // See note [Reordering associative and commutative operators] for detailed
 // information about this reordering.
+//
+// Some simplifications like a*b/b -> a is always correct in valid case, but
+// when there is an error (e.g. division-by-zero), these simplifications could
+// potentially hide the error. The argument `preserve_error` specifies whether
+// we should disable these optimization, unless we can prove there won't be an
+// error.
 TORCH_CUDA_CU_API Val* simplifyExpr(
     Val* value,
-    const std::list<VarInfo>& variables = {});
+    const std::list<VarInfo>& variables = {},
+    bool preserve_error = false);
 
 } // namespace nvfuser
