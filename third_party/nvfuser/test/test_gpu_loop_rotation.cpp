@@ -36,12 +36,12 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
     i30 = T0.stride[0] * i21;
     int64_t i44;
     i44 = 3 * i21;
-    bool b76;
-    b76 = 0 < (T0.size[0] - i21);
+    bool b82;
+    b82 = 0 < (T0.size[0] - i21);
     float T1[1];
     float T2[1];
     T1[0] = 0;
-    if (b76) {
+    if (b82) {
       T1[0]
          = T0[i30];
     }
@@ -57,12 +57,12 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
       float T3[1];
       T3[0]
          = T2[0];
-      if ((b76 && (i37 < 3))) {
+      if ((b82 && (i37 < 3))) {
         T4[(i44 + i37)]
            = T3[0];
       }
       T1[0] = 0;
-      if ((b76 && (i61 < 3))) {
+      if ((b82 && (i61 < 3))) {
         T1[0]
            = T0[(i30 + (T0.stride[1] * i61))];
       }
@@ -75,7 +75,7 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
 )";
   assertCUDAKernel(&fusion, expected_kernel);
 
-  for (auto n : {1, 99}) {
+  for (auto n : {0, 1, 99}) {
     auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
     auto t0 = at::randn({n, 3}, options);
     FusionExecutor fe;
@@ -103,17 +103,13 @@ TEST_F(NVFuserTest, FusionLoopRotation1Outer_CUDA) {
   inlineAllAt(tv4, 1);
   scheduler_utils::rotateLoop(tv4, 0, {tv1, tv2});
 
-  // TODO: the predicate 0 < T0.size[0] in
-  //  T1[i21]
-  //     = T0[(T0.stride[1] * i29)];
-  // is optimized to `true` by expr simplifier, due to
-  // https://github.com/csarofeen/pytorch/blob/167718b6d06558395f86b6d25a68352168b86da2/third_party/nvfuser/csrc/expr_simplifier.cpp#L1115-L1126
-  // This doesn't look very safe.
   const std::string expected_kernel = R"(
 __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
   NVFUSER_DEFINE_MAGIC_ZERO
-  int64_t i118;
-  i118 = -T0.size[0];
+  bool b79;
+  b79 = 0 < T0.size[0];
+  int64_t i128;
+  i128 = -T0.size[0];
   float T1[3];
   float T2[3];
   #pragma unroll
@@ -125,7 +121,7 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
   for(nvfuser_index_t i21 = 0; i21 < 3; ++i21) {
     int64_t i29;
     i29 = i21 + nvfuser_zero;
-    if ((i29 < 3)) {
+    if ((b79 && (i29 < 3))) {
       T1[i21]
          = T0[(T0.stride[1] * i29)];
     }
@@ -143,10 +139,10 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
     i48 = 3 * i24;
     int64_t i69;
     i69 = T0.stride[0] + (T0.stride[0] * i24);
-    bool b97;
-    b97 = 0 < (T0.size[0] - i24);
-    bool b126;
-    b126 = (i118 + i24) < -1;
+    bool b107;
+    b107 = 0 < (T0.size[0] - i24);
+    bool b136;
+    b136 = (i128 + i24) < -1;
     // Alias Allocation - register
     auto& T3 = T1;
     #pragma unroll
@@ -159,7 +155,7 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
     for(nvfuser_index_t i25 = 0; i25 < 3; ++i25) {
       int64_t i41;
       i41 = i25 + nvfuser_zero;
-      if ((b97 && (i41 < 3))) {
+      if ((b107 && (i41 < 3))) {
         T4[(i48 + i41)]
            = T3[i25];
       }
@@ -174,7 +170,7 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
     for(nvfuser_index_t i21 = 0; i21 < 3; ++i21) {
       int64_t i52;
       i52 = i21 + nvfuser_zero;
-      if ((b126 && (i52 < 3))) {
+      if ((b136 && (i52 < 3))) {
         T1[i21]
            = T0[(i69 + (T0.stride[1] * i52))];
       }
@@ -191,7 +187,7 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
 )";
   assertCUDAKernel(&fusion, expected_kernel);
 
-  for (auto n : {1, 99}) {
+  for (auto n : {0, 1, 99}) {
     auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
     auto t0 = at::randn({n, 3}, options);
     FusionExecutor fe;
@@ -314,7 +310,7 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
 )";
   assertCUDAKernel(&fusion, expected_kernel);
 
-  for (auto n : {1, 99}) {
+  for (auto n : {0, 1, 99}) {
     auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
     auto t0 = at::randn({n, 3}, options);
     FusionExecutor fe;
@@ -438,7 +434,7 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
 )";
   assertCUDAKernel(&fusion, expected_kernel);
 
-  for (auto n : {1, 99}) {
+  for (auto n : {0, 1, 99}) {
     auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
     auto t0 = at::randn({n, 3}, options);
     FusionExecutor fe;
@@ -474,10 +470,12 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
   i119 = 4 * T0.stride[0];
   int64_t i220;
   i220 = T0.stride[0] * 5;
-  int64_t i347;
-  i347 = -T0.size[0];
-  bool b351;
-  b351 = i347 < -4;
+  bool b295;
+  b295 = 0 < T0.size[0];
+  int64_t i357;
+  i357 = -T0.size[0];
+  bool b361;
+  b361 = i357 < -4;
   float T1[15];
   #pragma unroll
   for(nvfuser_index_t i21 = 0; i21 < 3; ++i21) {
@@ -488,7 +486,7 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
   for(nvfuser_index_t i21 = 0; i21 < 3; ++i21) {
     int64_t i35;
     i35 = i21 + nvfuser_zero;
-    if ((i35 < 3)) {
+    if ((b295 && (i35 < 3))) {
       T1[i21]
          = T0[(T0.stride[1] * i35)];
     }
@@ -500,8 +498,8 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
     i57 = 3 + (3 * i24);
     int64_t i78;
     i78 = T0.stride[0] + (T0.stride[0] * i24);
-    bool b323;
-    b323 = 0 < (T0.size[0] - ((1 + i24) + nvfuser_zero));
+    bool b333;
+    b333 = 0 < (T0.size[0] - ((1 + i24) + nvfuser_zero));
     #pragma unroll
     for(nvfuser_index_t i21 = 0; i21 < 3; ++i21) {
       T1[(i57 + i21)] = 0;
@@ -510,7 +508,7 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
     for(nvfuser_index_t i21 = 0; i21 < 3; ++i21) {
       int64_t i61;
       i61 = i21 + nvfuser_zero;
-      if ((b323 && (i61 < 3))) {
+      if ((b333 && (i61 < 3))) {
         T1[(i57 + i21)]
            = T0[(i78 + (T0.stride[1] * i61))];
       }
@@ -527,7 +525,7 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
   for(nvfuser_index_t i21 = 0; i21 < 3; ++i21) {
     int64_t i109;
     i109 = i21 + nvfuser_zero;
-    if ((b351 && (i109 < 3))) {
+    if ((b361 && (i109 < 3))) {
       T1[(12 + i21)]
          = T0[(i119 + (T0.stride[1] * i109))];
     }
@@ -549,10 +547,10 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
     i222 = i220 + (T0.stride[0] * i25);
     int64_t i288;
     i288 = 3 * ((1 + i25) % 5);
-    bool b373;
-    b373 = 0 < (T0.size[0] - i25);
-    bool b416;
-    b416 = (i347 + i25) < -5;
+    bool b383;
+    b383 = 0 < (T0.size[0] - i25);
+    bool b426;
+    b426 = (i357 + i25) < -5;
     float T3[3];
     #pragma unroll
     for(nvfuser_index_t i23 = 0; i23 < 3; ++i23) {
@@ -564,7 +562,7 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
     for(nvfuser_index_t i27 = 0; i27 < 3; ++i27) {
       int64_t i144;
       i144 = i27 + nvfuser_zero;
-      if ((b373 && (i144 < 3))) {
+      if ((b383 && (i144 < 3))) {
         T4[(i151 + i144)]
            = T3[i27];
       }
@@ -579,7 +577,7 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
     for(nvfuser_index_t i21 = 0; i21 < 3; ++i21) {
       int64_t i196;
       i196 = i21 + nvfuser_zero;
-      if ((b416 && (i196 < 3))) {
+      if ((b426 && (i196 < 3))) {
         T1[(i192 + i21)]
            = T0[(i222 + (T0.stride[1] * i196))];
       }
@@ -596,7 +594,7 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
 )";
   assertCUDAKernel(&fusion, expected_kernel);
 
-  for (auto n : {1, 99}) {
+  for (auto n : {0, 1, 99}) {
     auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
     auto t0 = at::randn({n, 3}, options);
     FusionExecutor fe;
@@ -731,7 +729,7 @@ __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T4) {
 )";
   assertCUDAKernel(&fusion, expected_kernel);
 
-  for (auto n : {1, 99}) {
+  for (auto n : {0, 1, 99}) {
     auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
     auto t0 = at::randn({n, 3}, options);
     FusionExecutor fe;

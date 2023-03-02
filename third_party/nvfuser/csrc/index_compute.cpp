@@ -2870,10 +2870,9 @@ std::vector<RootPredicateInfo> Index::getReferenceRootPredicates(
     // parameter. Predicates involving vectorized loops are separately
     // generated in lower_misaligned_vectorization.
     //
-    // Second condition is simply to avoid predication on broadcasting axes as
-    // it's not required.
-    if (consumer_stop_indexing_it == consumer_stop_index_map.end() ||
-        consumer_stop_indexing_it->second->isZeroInt()) {
+    // Can not omit stop index even if it is zero. This is important for empty
+    // tensor support, because in empty tensor the extent of an ID can be zero
+    if (consumer_stop_indexing_it == consumer_stop_index_map.end()) {
       continue;
     }
 
