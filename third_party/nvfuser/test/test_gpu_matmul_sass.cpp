@@ -156,18 +156,27 @@ TEST_F(NVFuserTest, FusionAmpereMatmulSASSModifiersCheck_CUDA) {
             using T = std::decay_t<decltype(i)>;
             if constexpr (std::is_same_v<sass::Instruction, T>) {
               if (i.opCode() == "LDGSTS") {
-                const std::vector<std::string> expect = {"E", "BYPASS", "128"};
+                const std::vector<std::string> expect = {
+                    "E", "BYPASS", "LTC128B", "128"};
                 TORCH_CHECK(
                     i.modifiers() == expect,
                     "Modifiers for LDGSTS has changed. "
-                    "Please manually check if the new modifiers makes sense and update this test.");
+                    "Please manually check if the new modifiers makes sense and update this test. "
+                    "Expect: ",
+                    expect,
+                    " Get: ",
+                    i.modifiers());
                 found_LDGSTS = true;
               } else if (i.opCode() == "LDGDEPBAR") {
                 const std::vector<std::string> expect;
                 TORCH_CHECK(
                     i.modifiers() == expect,
                     "Modifiers for LDGDEPBAR has changed. "
-                    "Please manually check if the new modifiers makes sense and update this test.");
+                    "Please manually check if the new modifiers makes sense and update this test. "
+                    "Expect: ",
+                    expect,
+                    " Get: ",
+                    i.modifiers());
                 found_LDGDEPBAR = true;
               } else if (i.opCode() == "LDSM") {
                 const std::vector<std::string> expect1 = {"16", "M88", "2"};
@@ -185,21 +194,34 @@ TEST_F(NVFuserTest, FusionAmpereMatmulSASSModifiersCheck_CUDA) {
                 TORCH_CHECK(
                     i.modifiers() == expect,
                     "Modifiers for HMMA has changed. "
-                    "Please manually check if the new modifiers makes sense and update this test.");
+                    "Please manually check if the new modifiers makes sense and update this test. "
+                    "Expect: ",
+                    expect,
+                    " Get: ",
+                    i.modifiers());
                 found_HMMA = true;
               } else if (i.opCode() == "BAR") {
-                const std::vector<std::string> expect = {"SYNC"};
+                const std::vector<std::string> expect = {
+                    "SYNC", "DEFER_BLOCKING"};
                 TORCH_CHECK(
                     i.modifiers() == expect,
                     "Modifiers for BAR has changed. "
-                    "Please manually check if the new modifiers makes sense and update this test.");
+                    "Please manually check if the new modifiers makes sense and update this test. "
+                    "Expect: ",
+                    expect,
+                    " Get: ",
+                    i.modifiers());
                 found_BAR = true;
               } else if (i.opCode() == "DEPBAR") {
                 const std::vector<std::string> expect = {"LE"};
                 TORCH_CHECK(
                     i.modifiers() == expect,
                     "Modifiers for DEPBAR has changed. "
-                    "Please manually check if the new modifiers makes sense and update this test.");
+                    "Please manually check if the new modifiers makes sense and update this test. "
+                    "Expect: ",
+                    expect,
+                    " Get: ",
+                    i.modifiers());
                 found_DEPBAR = true;
               }
             }

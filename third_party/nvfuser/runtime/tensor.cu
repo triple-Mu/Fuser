@@ -7,7 +7,8 @@ struct Tensor {
     for (int i = 0; i < N; i++) {
       max_ind += (size[i] - 1) * stride[i];
     }
-    assert(ind >= 0 && ind <= max_ind);
+    assert(ind >= 0);
+    assert(ind <= max_ind);
 #endif
     return data[ind];
   };

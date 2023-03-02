@@ -18,6 +18,9 @@ class MatmulParam {
     int smem_double_buffer_stage = 2;
   };
 
+  //! Whether to rotate the ldmatrix out of the main loop
+  bool rotate_ldmatrix_out_of_main_loop = true;
+
   //! (Ampere+) Use cp.async to load operands.
   bool async_gmem_load_operands = false;
 
