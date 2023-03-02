@@ -505,6 +505,12 @@ class TORCH_CUDA_CU_API ForLoop final : public Expr {
       bool unroll_required,
       DoubleBufferLoopStage double_buffer_loop_stage);
 
+  ForLoop(
+      IrBuilderPasskey passkey,
+      IterDomain* iter_domain,
+      Val* index,
+      DoubleBufferLoopStage double_buffer_loop_stage);
+
   ForLoop(IrBuilderPasskey passkey, IterDomain* iter_domain);
 
   ForLoop(IrBuilderPasskey passkey, const ForLoop* other);
@@ -547,6 +553,10 @@ class TORCH_CUDA_CU_API ForLoop final : public Expr {
 
   const Scope& body() const {
     return attribute(7)->as<Attribute<Scope>>()->value;
+  }
+
+  bool empty() const {
+    return body().empty();
   }
 
   // vectorize is true when the for-loop contains a vectorize set
@@ -624,6 +634,10 @@ class TORCH_CUDA_CU_API IfThenElse final : public Expr {
 
   bool hasElse() const {
     return !elseBody().empty();
+  }
+
+  bool empty() const {
+    return thenBody().empty() && elseBody().empty();
   }
 };
 

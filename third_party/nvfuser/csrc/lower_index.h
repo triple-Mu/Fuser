@@ -7,6 +7,7 @@
 #include <kernel_ir_dispatch.h>
 #include <root_domain_map.h>
 
+#include <unordered_set>
 #include <vector>
 
 namespace nvfuser {
@@ -68,6 +69,11 @@ class TORCH_CUDA_CU_API IndexLowering : private OptOutConstDispatch {
   void handle(const kir::CpAsyncCommit*) final;
 
   void generate(const std::vector<Expr*>& exprs);
+
+  // Get the loop in which the currently visiting expr is a rotated expr.
+  const std::unordered_set<kir::ForLoop*>& getRotatedLoop() const {
+    return rotated_loop_;
+  }
 
   // lower index for producer. The `override_index` is a mapping `id->index`,
   // where `id` must be an IterDomain in the rFactor domain of the producer.
@@ -149,6 +155,9 @@ class TORCH_CUDA_CU_API IndexLowering : private OptOutConstDispatch {
   // Track for loops to send to indexing. Similar to what's done in
   // kir::IrVisitor
   std::vector<kir::ForLoop*> for_loops_;
+
+  // Keep track of the loop in which the currently visiting expr is a rotated.
+  std::unordered_set<kir::ForLoop*> rotated_loop_;
 
   // Maps to keep track of allocated buffers and objects that must be
   // allocated only once

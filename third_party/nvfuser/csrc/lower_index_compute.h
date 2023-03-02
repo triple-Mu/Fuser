@@ -29,6 +29,7 @@ struct IndexFromIdGraph {
 //! local indexing will be performed.
 IndexFromIdGraph getTensorIndexFromIdGraph(
     const std::vector<kir::ForLoop*>& loops,
+    const std::unordered_set<kir::ForLoop*>& rotated_loops,
     const TensorView* consumer_tv,
     const TensorView* producer_tv = nullptr,
     bool is_global = true,
@@ -40,6 +41,7 @@ IndexFromIdGraph getTensorIndexFromIdGraph(
 //! predicates.
 IndexFromIdGraph getPredicateIndexingFromIdGraph(
     const std::vector<kir::ForLoop*>& loops,
+    const std::unordered_set<kir::ForLoop*>& rotated_loops,
     TensorView* consumer_tv,
     kir::ForLoop* unswitch_or_vec_loop,
     IterDomain* double_buffer_axis,

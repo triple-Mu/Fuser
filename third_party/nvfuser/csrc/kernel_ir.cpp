@@ -59,17 +59,16 @@ Predicate::Predicate(IrBuilderPasskey passkey, Bool* value)
 }
 
 std::string Predicate::toString(int indent_size) const {
-  if (predicate_type() == PredicateType::Manual) {
-    return value()->toString();
+  std::stringstream ss;
+  ss << predicate_type2string(predicate_type());
+  if (hasValue()) {
+    ss << " " << value()->toInlineString();
   }
-  return predicate_type2string(predicate_type());
+  return ss.str();
 }
 
 std::string Predicate::toInlineString(int indent_size) const {
-  if (predicate_type() == PredicateType::Manual) {
-    return value()->toInlineString();
-  }
-  return predicate_type2string(predicate_type());
+  return toString(indent_size);
 }
 
 TensorIndex::TensorIndex(
@@ -377,6 +376,8 @@ std::vector<Expr*>::iterator Scope::insert_before(Expr* ref, Expr* expr) {
       expr,
       " before the reference: ",
       ref,
+      " @ ",
+      (size_t)ref,
       " however the reference was not found in this scope.");
   return insert(it, expr);
 }
@@ -469,11 +470,15 @@ ForLoop::ForLoop(
       IrBuilder::create<Attribute<Scope>>(passkey.ir_container_, this));
 }
 
-ForLoop::ForLoop(IrBuilderPasskey passkey, IterDomain* iter_domain)
+ForLoop::ForLoop(
+    IrBuilderPasskey passkey,
+    IterDomain* iter_domain,
+    Val* index,
+    DoubleBufferLoopStage double_buffer_loop_stage)
     : ForLoop(
           passkey,
           iter_domain,
-          GpuLower::current()->caMap()->getIndexVariable(iter_domain),
+          index,
           nullptr,
           nullptr,
           nullptr,
@@ -481,11 +486,14 @@ ForLoop::ForLoop(IrBuilderPasskey passkey, IterDomain* iter_domain)
               isParallelTypeVectorize(iter_domain->getParallelType()),
           nullptr,
           false,
-          DoubleBufferLoopStage::NotApplicable) {
-  TORCH_INTERNAL_ASSERT(
-      passkey.ir_container_->isA<kir::Kernel>(),
-      "IR type only valid for Kernel container.");
-}
+          double_buffer_loop_stage) {}
+
+ForLoop::ForLoop(IrBuilderPasskey passkey, IterDomain* iter_domain)
+    : ForLoop(
+          passkey,
+          iter_domain,
+          GpuLower::current()->caMap()->getIndexVariable(iter_domain),
+          DoubleBufferLoopStage::NotApplicable) {}
 
 ForLoop::ForLoop(IrBuilderPasskey passkey, const ForLoop* other)
     : ForLoop(
@@ -498,11 +506,7 @@ ForLoop::ForLoop(IrBuilderPasskey passkey, const ForLoop* other)
           other->vectorize(),
           other->vectorize_shift(),
           other->isUnrollRequired(),
-          other->doubleBufferLoopStage()) {
-  TORCH_INTERNAL_ASSERT(
-      passkey.ir_container_->isA<kir::Kernel>(),
-      "IR type only valid for Kernel container.");
-}
+          other->doubleBufferLoopStage()) {}
 
 std::string ForLoop::toString(int indent_size) const {
   std::stringstream ss;
@@ -592,6 +596,10 @@ bool ForLoop::isTrivial() const {
   // These loops are not materialized
   if (vectorize() || iter_domain()->isBroadcast() ||
       iter_domain()->isStride() || iter_domain()->isMma()) {
+    return true;
+  }
+
+  if (index()->isConstScalar() || index()->definition() != nullptr) {
     return true;
   }
 

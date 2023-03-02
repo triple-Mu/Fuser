@@ -235,6 +235,23 @@ class TORCH_CUDA_CU_API Fusion : public IrContainer {
     return io_alias_;
   }
 
+  // vector of (tv, dim, selection)
+  // For each entry in the vector, the selected tv/expr in loop tv->axis(dim)
+  // will be rotated
+  using LoopRotationParam = std::vector<
+      std::tuple<TensorView*, int64_t, std::unordered_set<Statement*>>>;
+
+  const LoopRotationParam& getLoopRotationParam() const {
+    return loop_rotation_param_;
+  }
+
+  void rotateLoop(
+      TensorView* loop_tv,
+      int64_t axis,
+      std::unordered_set<Statement*> selection) {
+    loop_rotation_param_.emplace_back(loop_tv, axis, std::move(selection));
+  }
+
  protected:
   friend SegmentCandidateFinder;
   friend SegmentedFusion;
@@ -285,6 +302,10 @@ class TORCH_CUDA_CU_API Fusion : public IrContainer {
   //  the states are either all valid or all invalid
   bool all_tv_uses_valid_ = false;
   bool is_during_update_uses_ = false;
+
+  // Compilation parameters guiding the loop rotation pass. See note
+  // [Loop Rotation] for detail.
+  LoopRotationParam loop_rotation_param_;
 };
 
 } // namespace nvfuser

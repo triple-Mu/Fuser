@@ -142,8 +142,8 @@ class ReplayRFactor : public ReplayTransformations {
     // Remove mapped id from leaf IDs
     leaf_ids_.erase(mapped);
     // Add outputs to leaf IDs
-    leaf_ids_[ido] = counter++;
-    leaf_ids_[idi] = counter++;
+    leaf_ids_[ido] = newCounter();
+    leaf_ids_[idi] = newCounter();
 
     // Update our ID map to include these outputs
     id_map_[s->outer()] = ido;
@@ -194,7 +194,7 @@ class ReplayRFactor : public ReplayTransformations {
     leaf_ids_.erase(id_inner_mapped);
 
     // Add the output to the leaf IDs
-    leaf_ids_[merged_id] = counter++;
+    leaf_ids_[merged_id] = newCounter();
 
     id_map_[m->out()] = merged_id;
 
@@ -229,7 +229,7 @@ class ReplayRFactor : public ReplayTransformations {
         static_rfactor_output);
 
     leaf_ids_.erase(mapped);
-    leaf_ids_[resized_id] = counter++;
+    leaf_ids_[resized_id] = newCounter();
     id_map_[resize->out()] = resized_id;
 
     if (static_rfactor_ids_.count(resize->in())) {
@@ -262,13 +262,12 @@ class ReplayRFactor : public ReplayTransformations {
       // All the iter domains in original_domain that the rfactor axes are
       // dependant on.
       std::unordered_set<IterDomain*> static_rfactor_ids)
-      : ReplayTransformations(
-            original_domain->domain(),
-            std::move(id_map),
-            false),
+      : ReplayTransformations(original_domain->domain(), std::move(id_map)),
         rfactor_axes_(std::move(rfactor_axes)),
         static_rfactor_ids_(static_rfactor_ids),
-        rfactor_domain_(original_domain->getMaybeRFactorDomain()) {}
+        rfactor_domain_(original_domain->getMaybeRFactorDomain()) {
+    setErrorOnFailure(false);
+  }
 };
 
 } // namespace
@@ -466,7 +465,9 @@ std::pair<TensorDomain*, TensorDomain*> TransformRFactor::runReplay(
   }
 
   ReplayTransformations consumer_replay(
-      original_td->domain(), original_to_consumer_root_map, false, true);
+      original_td->domain(), original_to_consumer_root_map);
+  consumer_replay.setErrorOnFailure(false).setReplayResize(true);
+
   auto original_to_consumer_map = consumer_replay.getReplay();
 
   std::vector<IterDomain*> new_consumer_domain;

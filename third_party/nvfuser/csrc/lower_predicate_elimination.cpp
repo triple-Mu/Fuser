@@ -21,7 +21,7 @@ namespace {
 void assertOnWarpOps(const Expr* expr) {
   TORCH_INTERNAL_ASSERT(
       !ir_utils::isLdMatrixOp(expr),
-      "Predicate elimination: cannot eliminate pred for ldmatrix, use exact parallel dims",
+      "Predicate elimination: cannot eliminate pred for ldmatrix, use exact parallel dims. ",
       expr->toString());
   TORCH_INTERNAL_ASSERT(
       !expr->isA<MmaOp>(),

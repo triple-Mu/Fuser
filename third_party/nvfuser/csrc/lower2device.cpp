@@ -15,6 +15,7 @@
 #include <lower_index.h>
 #include <lower_insert_syncs.h>
 #include <lower_instrument.h>
+#include <lower_loop_rotation.h>
 #include <lower_loops.h>
 #include <lower_magic_zero.h>
 #include <lower_misaligned_vectorization.h>
@@ -442,12 +443,16 @@ void GpuLower::lower(Fusion* fusion) {
   const auto exprs_double_buffered = DoubleBufferPass::run(exprs_war_sync);
   dumpExprsIfEnabled(exprs_double_buffered, "DoubleBufferPass");
 
+  const auto exprs_loop_rotated =
+      rotateLoops(exprs_double_buffered, fusion_->getLoopRotationParam());
+  dumpExprsIfEnabled(exprs_loop_rotated, "rotateLoops");
+
   // This pass inserts predicates as well as branches in the code. Up until now
   // the code is explicitly single shot for loop based. Need to be careful in
   // later passes when doing any kind of insertions in loop nest structure as
   // insertions could be on if then or else instead of directly on a for loop.
   const auto exprs_unrolled_loops =
-      UnrollPass::runPass(fusion_, exprs_double_buffered);
+      UnrollPass::runPass(fusion_, exprs_loop_rotated);
   dumpExprsIfEnabled(exprs_unrolled_loops, "UnrollPass");
 
   commonScalarMap().initialize(exprs_unrolled_loops);

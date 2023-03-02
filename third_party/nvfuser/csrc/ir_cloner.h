@@ -64,7 +64,9 @@ class TORCH_CUDA_CU_API IrCloner {
   template <typename... Ts>
   std::tuple<Ts...> clone(const std::tuple<Ts...>& tup) {
     return std::apply(
-        [this](auto&... x) { return std::make_tuple<Ts...>(clone(x)...); },
+        [this](auto&... x) {
+          return std::make_tuple<Ts...>(this->clone(x)...);
+        },
         tup);
   }
 

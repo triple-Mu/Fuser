@@ -216,6 +216,8 @@ const char* predicate_type2string(PredicateType t) {
       return "Padding";
     case PredicateType::ReductionWrite:
       return "ReductionWrite";
+    case PredicateType::LoopRotation:
+      return "LoopRotation";
     default:
       TORCH_INTERNAL_ASSERT(false, "No string found for predicate type.");
   }

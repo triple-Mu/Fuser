@@ -99,6 +99,7 @@ struct IndexingParameters {
 // Initial loop index map for global producer or consumer case.
 IndexingParameters getLinearIndexParameters(
     const LoopIndexing& loop_indexing,
+    const std::unordered_set<kir::ForLoop*>& rotated_loops,
     bool index_producer = false) {
   IndexingParameters index_parameters;
 
@@ -117,6 +118,10 @@ IndexingParameters getLinearIndexParameters(
     } else {
       // Default use pre-allocated integers for index
       loop_index_map[index_domain] = loop->index();
+    }
+    if (rotated_loops.count(loop) > 0) {
+      loop_index_map[index_domain] = SimplifyingIrBuilder::addExpr(
+          loop_index_map.at(index_domain), loop->step());
     }
   }
 
@@ -141,9 +146,6 @@ IndexingParameters getLinearIndexParameters(
     for (auto loop_idx : c10::irange(loops.size())) {
       auto loop = loops[loop_idx];
       if (loop == double_buffer_loop) {
-        TORCH_INTERNAL_ASSERT(
-            !loop->isTrivial(), "The double buffer loop must be materialized");
-
         auto loop_id = loop_indexing.loopDomains()[loop_idx];
 
         auto concrete_loop_id =
@@ -167,6 +169,7 @@ IndexingParameters getLinearIndexParameters(
 // Initial index parameters for shared and local case
 IndexingParameters getNonGlobalInitialIndexParameters(
     const LoopIndexing& loop_indexing,
+    const std::unordered_set<kir::ForLoop*>& rotated_loops,
     const TensorView* consumer_tv,
     bool index_producer = false,
     const TensorView* producer_tv = nullptr,
@@ -202,6 +205,7 @@ IndexingParameters getNonGlobalInitialIndexParameters(
   std::tie(loop_to_ind_map, zero_loops) = indexMapFromTV(
       alloc_tv,
       loops,
+      rotated_loops,
       alloc_info.init_for_loop,
       !index_producer,
       double_buffer_loop);
@@ -305,6 +309,7 @@ bool predicateAtEnd(kir::ForLoop* loop) {
 //! the 3 variants.
 IndexingParameters getPredicateInitialIndexParameters(
     const LoopIndexing& loop_indexing,
+    const std::unordered_set<kir::ForLoop*>& rotated_loops,
     TensorView* consumer_tv,
     kir::ForLoop* unswitch_or_vec_loop,
     IterDomain* double_buffer_axis,
@@ -321,11 +326,17 @@ IndexingParameters getPredicateInitialIndexParameters(
   std::unordered_map<kir::ForLoop*, Val*> loop_to_ind_map;
 
   // Fill initial index with each forloop's index.
-  std::transform(
-      loops.begin(),
-      loops.end(),
-      std::inserter(loop_to_ind_map, loop_to_ind_map.begin()),
-      [](kir::ForLoop* fl) { return std::make_pair(fl, fl->index()); });
+  for (auto fl : loops) {
+    if (fl->isTrivial()) {
+      loop_to_ind_map[fl] = fl->start();
+    } else {
+      loop_to_ind_map[fl] = fl->index();
+    }
+    if (rotated_loops.count(fl) > 0) {
+      loop_to_ind_map[fl] =
+          SimplifyingIrBuilder::addExpr(loop_to_ind_map.at(fl), fl->step());
+    }
+  }
 
   bool unswitch_pred = unswitch_or_vec_loop != nullptr &&
       (unswitch_or_vec_loop->iter_domain()->getParallelType() ==
@@ -413,17 +424,6 @@ IndexingParameters getPredicateInitialIndexParameters(
     }
   }
 
-  // Modify trivial loops to use the loop start value.
-  //  FIXME: eventually should be all lifted in idgraph.
-  for (const auto loop : loops) {
-    auto& idx = loop_to_ind_map.at(loop);
-    // If the loop is trivial, the loop index can only be the loop
-    // start value.
-    if (idx == loop->index() && loop->isTrivial()) {
-      idx = loop->start();
-    }
-  }
-
   // Increment double buffer loop index
   if (double_buffer_axis != nullptr) {
     auto db_loop = GpuLower::current()->doubleBufferInfo().getDoubleBufferLoop(
@@ -439,7 +439,12 @@ IndexingParameters getPredicateInitialIndexParameters(
       auto stage_depth =
           GpuLower::current()->doubleBufferInfo().getStageDepthFor(
               db_loop->iter_domain());
-      if (cur_index == db_loop->index()) {
+      bool is_same =
+          (rotated_loops.count(db_loop)
+               ? cur_index->sameAs(SimplifyingIrBuilder::addExpr(
+                     db_loop->index(), db_loop->step()))
+               : cur_index == db_loop->index());
+      if (is_same) {
         loop_to_ind_map[db_loop] = SimplifyingIrBuilder::addExpr(
             cur_index, SimplifyingIrBuilder::create<Int>(stage_depth - 1));
       }
@@ -782,6 +787,7 @@ void LoopIndexingAnalysis::constructLoopDomains() {
 
 IndexFromIdGraph getTensorIndexFromIdGraph(
     const std::vector<kir::ForLoop*>& loops,
+    const std::unordered_set<kir::ForLoop*>& rotated_loops,
     const TensorView* consumer_tv,
     const TensorView* producer_tv,
     bool is_global,
@@ -803,10 +809,16 @@ IndexFromIdGraph getTensorIndexFromIdGraph(
   }
 
   if (is_global) {
-    index_parameters = getLinearIndexParameters(loop_indexing, index_producer);
+    index_parameters =
+        getLinearIndexParameters(loop_indexing, rotated_loops, index_producer);
   } else {
     index_parameters = getNonGlobalInitialIndexParameters(
-        loop_indexing, consumer_tv, index_producer, producer_tv, p2c_map);
+        loop_indexing,
+        rotated_loops,
+        consumer_tv,
+        index_producer,
+        producer_tv,
+        p2c_map);
   }
 
   IndexCompute indexing(
@@ -930,6 +942,7 @@ IndexFromIdGraph getTensorIndexFromIdGraph(
 
 IndexFromIdGraph getPredicateIndexingFromIdGraph(
     const std::vector<kir::ForLoop*>& loops,
+    const std::unordered_set<kir::ForLoop*>& rotated_loops,
     TensorView* consumer_tv,
     kir::ForLoop* unswitch_or_vec_loop,
     IterDomain* double_buffer_axis,
@@ -943,6 +956,7 @@ IndexFromIdGraph getPredicateIndexingFromIdGraph(
   //  according to loop and unswitch info.
   auto index_parameters = getPredicateInitialIndexParameters(
       loop_indexing,
+      rotated_loops,
       consumer_tv,
       unswitch_or_vec_loop,
       double_buffer_axis,

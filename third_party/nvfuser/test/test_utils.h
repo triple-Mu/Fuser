@@ -371,8 +371,17 @@ class NVFuserTest : public ::testing::Test {
       GTEST_SKIP() << "skipping tests on pre-PASCAL GPUs";
     }
     setFillAllocationWithNan(true);
-    // This is failing ?!
-    // setAssertOutOfBound(true);
+  }
+};
+
+// Please see note [Limitation of boundary assert]
+class EnableOutOfBoundAssert {
+ public:
+  EnableOutOfBoundAssert() {
+    setAssertOutOfBound(true);
+  }
+  ~EnableOutOfBoundAssert() {
+    setAssertOutOfBound(false);
   }
 };
 

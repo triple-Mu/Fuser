@@ -72,6 +72,7 @@ list(APPEND NVFUSER_SRCS
     ${NVFUSER_SRCS_DIR}/lower_scalar_hoist.cpp
     ${NVFUSER_SRCS_DIR}/lower_insert_syncs.cpp
     ${NVFUSER_SRCS_DIR}/lower_instrument.cpp
+    ${NVFUSER_SRCS_DIR}/lower_loop_rotation.cpp
     ${NVFUSER_SRCS_DIR}/lower_loops.cpp
     ${NVFUSER_SRCS_DIR}/lower_magic_zero.cpp
     ${NVFUSER_SRCS_DIR}/lower_misaligned_vectorization.cpp
@@ -267,12 +268,14 @@ endif()
 # The list of NVFUSER runtime files
 list(APPEND NVFUSER_RUNTIME_FILES
   ${NVFUSER_ROOT}/runtime/array.cu
+  ${NVFUSER_ROOT}/runtime/basic_type_traits.cu
   ${NVFUSER_ROOT}/runtime/bf16_support.cu
   ${NVFUSER_ROOT}/runtime/block_reduction.cu
   ${NVFUSER_ROOT}/runtime/block_sync_atomic.cu
   ${NVFUSER_ROOT}/runtime/block_sync_default.cu
   ${NVFUSER_ROOT}/runtime/block_welford_outer.cu
   ${NVFUSER_ROOT}/runtime/broadcast.cu
+  ${NVFUSER_ROOT}/runtime/complex_number.cu
   ${NVFUSER_ROOT}/runtime/fp16_support.cu
   ${NVFUSER_ROOT}/runtime/fused_reduction.cu
   ${NVFUSER_ROOT}/runtime/fused_welford_helper.cu
@@ -341,6 +344,7 @@ if(BUILD_TEST)
   list(APPEND JIT_TEST_SRCS ${NVFUSER_ROOT}/test/test_gpu_tensor_factories.cpp)
   list(APPEND JIT_TEST_SRCS ${NVFUSER_ROOT}/test/test_gpu_fused_reduction.cpp)
   list(APPEND JIT_TEST_SRCS ${NVFUSER_ROOT}/test/test_gpu_outer_reduction.cpp)
+  list(APPEND JIT_TEST_SRCS ${NVFUSER_ROOT}/test/test_gpu_loop_rotation.cpp)
   list(APPEND JIT_TEST_SRCS ${NVFUSER_ROOT}/test/test_gpu_shift.cpp)
   list(APPEND JIT_TEST_SRCS ${NVFUSER_ROOT}/test/test_gpu_resize.cpp)
   list(APPEND JIT_TEST_SRCS ${NVFUSER_ROOT}/test/test_gpu_tensorcore.cpp)

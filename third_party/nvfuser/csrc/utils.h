@@ -71,6 +71,7 @@ enum class DebugDumpOption {
   LowerVerbose, //! Print all passes' transform in GpuLower::lower
   ExprSimplification, //! Print all passes' transform in simplifyExpr
   ExprSort, //! Print merging decisions on expression sorting
+  LoopRotation, //! Print loop rotation log
   EndOfOption //! Placeholder for counting the number of elements
 };
 

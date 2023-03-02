@@ -16,6 +16,7 @@ class PredicateCompute {
   static Bool* getInlinePredicate(
       const Expr* expr,
       const std::vector<kir::ForLoop*>& loops,
+      const std::unordered_set<kir::ForLoop*>& rotated_loops,
       Bool* thread_pred,
       PredicateType pred_type);
 };
@@ -185,6 +186,9 @@ class TORCH_CUDA_CU_API UnswitchPredicate {
   std::vector<Bool*> predicates_;
 
   std::vector<kir::ForLoop*> for_loops_;
+
+  // Keep track of the loop in which the currently visiting expr is a rotated.
+  std::unordered_set<kir::ForLoop*> rotated_loop_;
 
   kir::ForLoop* unrolled_loop_;
 };

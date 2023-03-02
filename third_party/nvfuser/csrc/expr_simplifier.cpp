@@ -134,11 +134,12 @@ std::unique_ptr<debug_print::NoOpLogger> createLogger(Val* value) {
 namespace {
 
 // An ordered mapping of variable -> VarInfo
-class VarInfoMap {
+class Context {
  public:
-  VarInfoMap() = default;
+  Context() = default;
 
-  VarInfoMap(const std::list<VarInfo>& variables) {
+  Context(const std::list<VarInfo>& variables, bool preserve_error)
+      : preserve_error_(preserve_error) {
     var_info_map_.reserve(variables.size());
     var_order_.reserve(variables.size());
     set_.reserve(variables.size());
@@ -169,10 +170,15 @@ class VarInfoMap {
     return set_;
   }
 
+  bool preserveError() const {
+    return preserve_error_;
+  }
+
  private:
   std::unordered_map<Val*, VarInfo> var_info_map_;
   std::vector<Val*> var_order_;
   std::unordered_set<Val*> set_;
+  bool preserve_error_ = false;
 };
 
 bool hasSimilarType(DataType t1, DataType t2) {
@@ -278,7 +284,7 @@ Val* recurseDown(Val* value, std::function<Val*(Val*)> rule) {
   return value;
 }
 
-RegisterType getRegisterType(Val* value, const VarInfoMap& var_info) {
+RegisterType getRegisterType(Val* value, const Context& context) {
   if (auto ns = dynamic_cast<NamedScalar*>(value)) {
     if (ns->getParallelIndex() == ParallelType::TIDx ||
         ns->getParallelIndex() == ParallelType::TIDy ||
@@ -289,13 +295,13 @@ RegisterType getRegisterType(Val* value, const VarInfoMap& var_info) {
   if (value->isConstScalar()) {
     return RegisterType::Immediate;
   }
-  if (var_info.has(value) && var_info.info(value).is_compile_time_const) {
+  if (context.has(value) && context.info(value).is_compile_time_const) {
     return RegisterType::Immediate;
   }
   if (auto def = value->definition()) {
     RegisterType result = RegisterType::Unknown;
     for (auto inp : def->inputs()) {
-      auto inp_rtype = getRegisterType(inp, var_info);
+      auto inp_rtype = getRegisterType(inp, context);
       if (inp_rtype == RegisterType::GeneralPurpose) {
         return RegisterType::GeneralPurpose;
       }
@@ -538,16 +544,16 @@ class FlattenedAssocCommOp : public Expr {
   // and b < c. So in this example, this function will return [v2, v1].
   // Tensors are always considered as variables and they are always considered
   // as the rightmost.
-  std::vector<Val*> sortedInputs(const VarInfoMap& var_info) {
+  std::vector<Val*> sortedInputs(const Context& context) {
     std::vector<Val*> sorted_inputs(inputs().begin(), inputs().end());
     std::unordered_map<Val*, std::unordered_set<Val*>> dependency;
     dependency.reserve(sorted_inputs.size());
     for (auto v : sorted_inputs) {
-      dependency[v] = getSubexprDependency(v, var_info.set());
+      dependency[v] = getSubexprDependency(v, context.set());
     }
     auto compare = [&](Val* v1, Val* v2) {
-      // Find all variables in var_info that v1 and v2 depends on. The input (v1
-      // or v2) that exclusively has the right most variable in var_info.order()
+      // Find all variables in context that v1 and v2 depends on. The input (v1
+      // or v2) that exclusively has the right most variable in context.order()
       // will be to the right of the other input.
       bool v1_is_left_of_v2 = false;
       auto deps1 = dependency.at(v1);
@@ -563,7 +569,7 @@ class FlattenedAssocCommOp : public Expr {
       if (hasTensorIndex(deps1)) {
         return false;
       }
-      for (auto v : var_info.order()) {
+      for (auto v : context.order()) {
         if (deps1.count(v) > 0 && deps2.count(v) == 0) {
           v1_is_left_of_v2 = false;
         } else if (deps2.count(v) > 0 && deps1.count(v) == 0) {
@@ -715,9 +721,9 @@ Val* flatten(Val* value) {
 
 // Recursively convert expressions like FlattenedAdd(a, b, c, d) into
 // AddOp(AddOp(AddOp(a, b), c), d))
-Val* unflatten(Val* value, const VarInfoMap& var_info);
+Val* unflatten(Val* value, const Context& context);
 
-Val* unflattenRule(Val* value, const VarInfoMap& var_info) {
+Val* unflattenRule(Val* value, const Context& context) {
   auto def = value->definition();
   if (def == nullptr) {
     return value;
@@ -736,14 +742,14 @@ Val* unflattenRule(Val* value, const VarInfoMap& var_info) {
     // Handle flattened op:
     // Convert flattened op into original binary ops
     TORCH_INTERNAL_ASSERT(fop->inputs().size() >= 2);
-    auto sorted_inputs = fop->sortedInputs(var_info);
+    auto sorted_inputs = fop->sortedInputs(context);
     // We need to recursively unflatten all inputs, because we might have
     // nested flattened expressions like
     // FlattenedAdd(a, b, FlattenedMul(c, d, e))
-    Val* lhs = unflatten(sorted_inputs.at(0), var_info);
+    Val* lhs = unflatten(sorted_inputs.at(0), context);
     int64_t next = 1;
     while (next < (int64_t)sorted_inputs.size()) {
-      auto rhs = unflatten(sorted_inputs.at(next), var_info);
+      auto rhs = unflatten(sorted_inputs.at(next), context);
       if (fop->getOpType() == BinaryOpType::Add) {
         // For binary add/sub op, we need to correctly handle the promotion rule
         // ptr + int -> ptr and ptr - int -> ptr, so we use IrBuilder::addExpr
@@ -768,9 +774,9 @@ Val* unflattenRule(Val* value, const VarInfoMap& var_info) {
   return value;
 }
 
-Val* unflatten(Val* value, const VarInfoMap& var_info) {
+Val* unflatten(Val* value, const Context& context) {
   return recurseDown(
-      value, [&var_info](Val* val) { return unflattenRule(val, var_info); });
+      value, [&context](Val* val) { return unflattenRule(val, context); });
 }
 
 } // namespace assoc_comm
@@ -1057,9 +1063,9 @@ namespace prove {
 // - x can be either zero or non-zero, it is just a symbolic number that depends
 // - x is zero
 
-bool isPositive(Val* value, const VarInfoMap& var_info);
+bool isPositive(Val* value, const Context& context);
 
-bool isNonNegative(Val* value, const VarInfoMap& var_info) {
+bool isNonNegative(Val* value, const Context& context) {
   value = foldConstants(value);
   if (value->getInt().has_value() && *value->getInt() >= 0) {
     return true;
@@ -1067,7 +1073,7 @@ bool isNonNegative(Val* value, const VarInfoMap& var_info) {
   if (value->getDouble().has_value() && *value->getDouble() >= 0.0) {
     return true;
   }
-  if (isPositive(value, var_info)) {
+  if (isPositive(value, context)) {
     return true;
   }
   if (auto ns = dynamic_cast<NamedScalar*>(value)) {
@@ -1078,15 +1084,15 @@ bool isNonNegative(Val* value, const VarInfoMap& var_info) {
     }
   }
   value = maybeUnwrapMagicZero(value);
-  if (var_info.has(value)) {
-    return isNonNegative(var_info.info(value).start, var_info) &&
-        isNonNegative(var_info.info(value).step, var_info);
+  if (context.has(value)) {
+    return isNonNegative(context.info(value).start, context) &&
+        isNonNegative(context.info(value).step, context);
   }
   if (auto fop = dynamic_cast<FOp*>(value->definition())) {
     auto op = fop->getOpType();
     if (op == BinaryOpType::Add || op == BinaryOpType::Mul) {
       for (auto inp : fop->inputs()) {
-        if (!isNonNegative(inp, var_info)) {
+        if (!isNonNegative(inp, context)) {
           return false;
         }
       }
@@ -1096,14 +1102,14 @@ bool isNonNegative(Val* value, const VarInfoMap& var_info) {
     auto op = bop->getBinaryOpType();
     if (op == BinaryOpType::Mod || op == BinaryOpType::Div ||
         op == BinaryOpType::CeilDiv) {
-      return isNonNegative(bop->lhs(), var_info) &&
-          isPositive(bop->rhs(), var_info);
+      return isNonNegative(bop->lhs(), context) &&
+          isPositive(bop->rhs(), context);
     }
   }
   return false;
 }
 
-bool isPositive(Val* value, const VarInfoMap& var_info) {
+bool isPositive(Val* value, const Context& context) {
   value = foldConstants(value);
   if (value->getInt().has_value() && *value->getInt() > 0) {
     return true;
@@ -1112,16 +1118,7 @@ bool isPositive(Val* value, const VarInfoMap& var_info) {
     return true;
   }
   if (auto ns = dynamic_cast<NamedScalar*>(value)) {
-    // TODO: currently we are implicitly assuming tensor sizes to be non-zero.
-    // For example, if I have T0[2, 0] and I do T0->merge(0), I get T0[2*0]. And
-    // during indexing, we will generate index like: (i / 0, i % 0). Strictly
-    // speaking, this is wrong, but we are not handling this edge case. We are
-    // just hoping that we will be lucky and this will work. For expression
-    // simplification, I am not considering this edge case either, because all
-    // simplifications involving div and mod requires the divisor to be
-    // non-zero, and I don't want this edge case to block the simplification of
-    // normal cases.
-    if (ns->getParallelDim().has_value() || ns->isTensorSize()) {
+    if (ns->getParallelDim().has_value()) {
       return true;
     }
   }
@@ -1130,16 +1127,16 @@ bool isPositive(Val* value, const VarInfoMap& var_info) {
     if (op == BinaryOpType::Add) {
       bool has_positive = false;
       for (auto inp : fop->inputs()) {
-        if (isPositive(inp, var_info)) {
+        if (isPositive(inp, context)) {
           has_positive = true;
-        } else if (!isNonNegative(inp, var_info)) {
+        } else if (!isNonNegative(inp, context)) {
           return false;
         }
       }
       return has_positive;
     } else if (op == BinaryOpType::Mul) {
       for (auto inp : fop->inputs()) {
-        if (!isPositive(inp, var_info)) {
+        if (!isPositive(inp, context)) {
           return false;
         }
       }
@@ -1158,7 +1155,7 @@ bool isZero(Val* value) {
   return false;
 }
 
-bool isNonZero(Val* value, const VarInfoMap& var_info) {
+bool isNonZero(Val* value, const Context& context) {
   value = foldConstants(value);
   if (value->getInt().has_value() && *value->getInt() != 0) {
     return true;
@@ -1166,12 +1163,12 @@ bool isNonZero(Val* value, const VarInfoMap& var_info) {
   if (value->getDouble().has_value() && *value->getDouble() != 0.0) {
     return true;
   }
-  if (isPositive(value, var_info)) {
+  if (isPositive(value, context)) {
     return true;
   }
   if (auto fop = toFlattenedMul(value->definition())) {
     for (auto inp : fop->inputs()) {
-      if (!isNonZero(inp, var_info)) {
+      if (!isNonZero(inp, context)) {
         return false;
       }
     }
@@ -1188,11 +1185,56 @@ bool isMultipleOf(Val* x, Val* y) {
   return sym_algebra::divideFactorized(lhs, rhs) != nullptr;
 }
 
-bool hasCompatibleSign(Val* x, Val* y, const VarInfoMap& var_info) {
-  return isNonNegative(x, var_info) && isNonNegative(y, var_info);
+bool hasCompatibleSign(Val* x, Val* y, const Context& context) {
+  return isNonNegative(x, context) && isNonNegative(y, context);
 }
 
 } // namespace prove
+
+namespace {
+
+// If we want to do simplifications like (a * b) / b -> a, depending on whether
+// we want to preserve error, the behavior could be different. If we don't care
+// about preserving error, we can just go ahead and do the simplification.
+// However, if we do want the division-by-zero error to be preserved, then we
+// can only do the simplification if we can prove b != 0. This function tells us
+// if the value of b is safe to do such optimization. Instead of completely
+// ignoring error case, we do a bit extra: if b is proved to be zero, then we
+// are sure that there will be an error, then we don't remove the error. That
+// is, if we don't know if there will be an error, we procceed assuming no
+// error. If we are sure there will be an error, then don't procceed.
+bool isValidDenominator(Val* denominator, const Context& context) {
+  // We ask two questions:
+  // Q1: Can we prove the denominato is nonzero?
+  // Q2: Can we prove the denominato is zero?
+  // Depending on the outcome of these two question, we have different behavior:
+  // | Q1 | Q2 | Div-by-zero err? | Behavior                                |
+  // |----|----|------------------|-----------------------------------------|
+  // | T  | T  | Not possible     | Not possible                            |
+  // | T  | F  | Guaranteed no    | allow proceeding                        |
+  // | F  | T  | Guaranteed yes   | disallow proceeding                     |
+  // | F  | F  | don't know       | allow if not required to preserve error |
+  bool proved_nonzero = prove::isNonZero(denominator, context);
+  if (proved_nonzero) {
+    return true;
+  }
+  if (context.preserveError()) {
+    return false;
+  }
+  bool proved_zero = foldConstants(denominator)->isZero();
+  if (proved_zero) {
+    return false;
+  }
+  if (isDebugDumpEnabled(DebugDumpOption::ExprSimplification)) {
+    TORCH_WARN(
+        "Assuming ",
+        denominator->toInlineString(),
+        " to be non-zero does not perserve division-by-zero error");
+  }
+  return true;
+}
+
+} // namespace
 
 namespace rules {
 
@@ -1211,7 +1253,7 @@ namespace rules {
 // -(-x) -> x
 // !(!x) -> x
 // ...
-Val* eliminateTrivialComputation(Val* value, const VarInfoMap& var_info) {
+Val* eliminateTrivialComputation(Val* value, const Context& context) {
   auto folded = foldConstants(value);
   if (folded != value) {
     return folded;
@@ -1307,9 +1349,8 @@ Val* eliminateTrivialComputation(Val* value, const VarInfoMap& var_info) {
       // 0 / a -> 0
       auto lhs = foldConstants(bop->lhs());
       auto rhs = foldConstants(bop->rhs());
-      bool divisor_is_1 = (rhs->getInt() == 1 || rhs->getDouble() == 1.0);
-      if (divisor_is_1 ||
-          (prove::isNonZero(rhs, var_info) && lhs->getInt() == 0)) {
+      if (rhs->isOne() ||
+          (isValidDenominator(rhs, context) && lhs->getInt() == 0)) {
         return lhs;
       }
     } else if (bop->getBinaryOpType() == BinaryOpType::Sub) {
@@ -1342,7 +1383,7 @@ Val* eliminateTrivialComputation(Val* value, const VarInfoMap& var_info) {
 // If x can be proved to be nonzero, then replace x != 0 as true, replace x == 0
 // as false
 // if x->sameAs(y), then replace x == y as true, replace x != y as false
-Val* eliminateTrivialPredicate(Val* value, const VarInfoMap& var_info) {
+Val* eliminateTrivialPredicate(Val* value, const Context& context) {
   if (!value->isABool()) {
     return value;
   }
@@ -1359,41 +1400,41 @@ Val* eliminateTrivialPredicate(Val* value, const VarInfoMap& var_info) {
     }
   }
   if (prove::isZero(bop->rhs())) {
-    if (op == BinaryOpType::GE && prove::isNonNegative(bop->lhs(), var_info)) {
+    if (op == BinaryOpType::GE && prove::isNonNegative(bop->lhs(), context)) {
       return value->fusion()->trueVal();
     } else if (
-        op == BinaryOpType::GT && prove::isPositive(bop->lhs(), var_info)) {
+        op == BinaryOpType::GT && prove::isPositive(bop->lhs(), context)) {
       return value->fusion()->trueVal();
     } else if (
-        op == BinaryOpType::NE && prove::isNonZero(bop->lhs(), var_info)) {
+        op == BinaryOpType::NE && prove::isNonZero(bop->lhs(), context)) {
       return value->fusion()->trueVal();
     } else if (
-        op == BinaryOpType::LT && prove::isNonNegative(bop->lhs(), var_info)) {
+        op == BinaryOpType::LT && prove::isNonNegative(bop->lhs(), context)) {
       return value->fusion()->falseVal();
     } else if (
-        op == BinaryOpType::LE && prove::isPositive(bop->lhs(), var_info)) {
+        op == BinaryOpType::LE && prove::isPositive(bop->lhs(), context)) {
       return value->fusion()->falseVal();
     } else if (
-        op == BinaryOpType::Eq && prove::isNonZero(bop->lhs(), var_info)) {
+        op == BinaryOpType::Eq && prove::isNonZero(bop->lhs(), context)) {
       return value->fusion()->falseVal();
     }
   } else if (prove::isZero(bop->lhs())) {
-    if (op == BinaryOpType::LE && prove::isNonNegative(bop->rhs(), var_info)) {
+    if (op == BinaryOpType::LE && prove::isNonNegative(bop->rhs(), context)) {
       return value->fusion()->trueVal();
     } else if (
-        op == BinaryOpType::LT && prove::isPositive(bop->rhs(), var_info)) {
+        op == BinaryOpType::LT && prove::isPositive(bop->rhs(), context)) {
       return value->fusion()->trueVal();
     } else if (
-        op == BinaryOpType::NE && prove::isNonZero(bop->rhs(), var_info)) {
+        op == BinaryOpType::NE && prove::isNonZero(bop->rhs(), context)) {
       return value->fusion()->trueVal();
     } else if (
-        op == BinaryOpType::GT && prove::isNonNegative(bop->rhs(), var_info)) {
+        op == BinaryOpType::GT && prove::isNonNegative(bop->rhs(), context)) {
       return value->fusion()->falseVal();
     } else if (
-        op == BinaryOpType::GE && prove::isPositive(bop->rhs(), var_info)) {
+        op == BinaryOpType::GE && prove::isPositive(bop->rhs(), context)) {
       return value->fusion()->falseVal();
     } else if (
-        op == BinaryOpType::Eq && prove::isNonZero(bop->rhs(), var_info)) {
+        op == BinaryOpType::Eq && prove::isNonZero(bop->rhs(), context)) {
       return value->fusion()->falseVal();
     }
   }
@@ -1403,12 +1444,12 @@ Val* eliminateTrivialPredicate(Val* value, const VarInfoMap& var_info) {
 // Apply rule L to replace x % y with 0 if x can be proved to be a multiple of y
 // Also, according to rule M, if x can be factorized as x = k * y, then x / y
 // can be simplified as x / y = (k * y) / y = k * (y / y) = k
-Val* simplifyDivisibleDivMod(Val* value, const VarInfoMap& var_info) {
+Val* simplifyDivisibleDivMod(Val* value, const Context& context) {
   auto bop = dynamic_cast<BinaryOp*>(value->definition());
   if (!bop) {
     return value;
   }
-  if (!prove::isNonZero(bop->rhs(), var_info)) {
+  if (!isValidDenominator(bop->rhs(), context)) {
     return value;
   }
   if (bop->getBinaryOpType() == BinaryOpType::Mod) {
@@ -1438,7 +1479,7 @@ Val* simplifyDivisibleDivMod(Val* value, const VarInfoMap& var_info) {
 // Let y = gcd(x, y) * y' and x = gcd(x, y) * x'
 // If gcd is nonzero, then we can simplify x % y as:
 // x' % y' * gcd(x, y)
-Val* cancelDivMod(Val* value, const VarInfoMap& var_info) {
+Val* cancelDivMod(Val* value, const Context& context) {
   auto divmod = toDivModOp(value->definition());
   if (!divmod) {
     return value;
@@ -1450,8 +1491,7 @@ Val* cancelDivMod(Val* value, const VarInfoMap& var_info) {
   auto lhs = sym_algebra::factorize(divmod->lhs());
   auto rhs = sym_algebra::factorize(divmod->rhs());
   auto gcd = sym_algebra::greatestCommonDivisor({lhs, rhs});
-  if (gcd->isOneInt() || gcd->getDouble() == 1.0 ||
-      !prove::isNonZero(gcd, var_info)) {
+  if (gcd->isOne() || !isValidDenominator(gcd, context)) {
     return value;
   }
   auto numerator = sym_algebra::divideFactorized(lhs, gcd);
@@ -1474,14 +1514,14 @@ Val* cancelDivMod(Val* value, const VarInfoMap& var_info) {
 // If compatible_sign(a, b), and a is a multiple of c, then:
 //  (a+b)/c = a/c + b/c
 //  (a + b) % c = b % c
-Val* distributeDivisibleDivMod(Val* value, const VarInfoMap& var_info) {
+Val* distributeDivisibleDivMod(Val* value, const Context& context) {
   auto divmod = toDivModOp(value->definition());
   if (!divmod) {
     return value;
   }
   auto lhs = divmod->lhs();
   auto rhs = divmod->rhs();
-  if (!prove::isNonZero(rhs, var_info)) {
+  if (!isValidDenominator(rhs, context)) {
     return value;
   }
   auto fop = toFlattenedAdd(lhs->definition());
@@ -1509,13 +1549,12 @@ Val* distributeDivisibleDivMod(Val* value, const VarInfoMap& var_info) {
       IrBuilder::create<FOp>(
           BinaryOpType::Add, sum_of_other_terms, std::move(other_terms));
     }
-    if (prove::hasCompatibleSign(
-            divisible_term, sum_of_other_terms, var_info)) {
+    if (prove::hasCompatibleSign(divisible_term, sum_of_other_terms, context)) {
       std::vector<Val*> new_inputs;
       auto term1 = IrBuilder::newScalar(*value->getDataType());
       IrBuilder::create<BinaryOp>(
           divmod->getBinaryOpType(), term1, divisible_term, rhs);
-      new_inputs.emplace_back(simplifyDivisibleDivMod(term1, var_info));
+      new_inputs.emplace_back(simplifyDivisibleDivMod(term1, context));
       new_inputs.emplace_back(IrBuilder::newScalar(*value->getDataType()));
       IrBuilder::create<BinaryOp>(
           divmod->getBinaryOpType(), new_inputs[1], sum_of_other_terms, rhs);
@@ -1528,7 +1567,7 @@ Val* distributeDivisibleDivMod(Val* value, const VarInfoMap& var_info) {
 }
 
 // a * (b + c) -> a * b + a * c
-Val* distributeMul(Val* value, const VarInfoMap& var_info) {
+Val* distributeMul(Val* value, const Context& context) {
   auto fop = toFlattenedMul(value->definition());
   if (!fop) {
     return value;
@@ -1580,7 +1619,7 @@ Val* distributeMul(Val* value, const VarInfoMap& var_info) {
 // compile time constant for nvRTC, so it can use the immediate fields of the
 // instruction. This optimization results in a great save on registers.
 // See also: https://github.com/csarofeen/pytorch/pull/1976
-Val* reducePredicateRegisterUsage(Val* value, const VarInfoMap& var_info) {
+Val* reducePredicateRegisterUsage(Val* value, const Context& context) {
   auto bop = dynamic_cast<BinaryOp*>(value->definition());
   if (!value->isABool() || bop == nullptr) {
     return value;
@@ -1614,7 +1653,7 @@ Val* reducePredicateRegisterUsage(Val* value, const VarInfoMap& var_info) {
       if (prove::isZero(inp)) {
         continue;
       }
-      switch (getRegisterType(inp, var_info)) {
+      switch (getRegisterType(inp, context)) {
         case RegisterType::GeneralPurpose:
           new_lhs.emplace_back(inp);
           break;
@@ -1636,7 +1675,7 @@ Val* reducePredicateRegisterUsage(Val* value, const VarInfoMap& var_info) {
       if (prove::isZero(inp)) {
         continue;
       }
-      switch (getRegisterType(inp, var_info)) {
+      switch (getRegisterType(inp, context)) {
         case RegisterType::GeneralPurpose:
           new_lhs.emplace_back(neg(inp));
           break;
@@ -1705,7 +1744,7 @@ Val* reducePredicateRegisterUsage(Val* value, const VarInfoMap& var_info) {
 // Pattern 2: a / b * (b*c) + a % b * c -> a * c
 Val* fundamentalDivisionWithRemainderProperty(
     Val* value,
-    const VarInfoMap& var_info) {
+    const Context& context) {
   auto fadd = toFlattenedAdd(value->definition());
   if (!fadd) {
     return value;
@@ -1800,7 +1839,7 @@ Val* fundamentalDivisionWithRemainderProperty(
       if (!a1->sameAs(a2) || !b1->sameAs(b2)) {
         continue;
       }
-      if (!prove::isNonZero(b1, var_info)) {
+      if (!isValidDenominator(b1, context)) {
         continue;
       }
       auto factorized_b = sym_algebra::factorize(b1);
@@ -1835,14 +1874,14 @@ Val* fundamentalDivisionWithRemainderProperty(
 
 } // namespace rules
 
-#define RUN_PASS(pass_name)                                      \
-  if (disabled_passes == nullptr ||                              \
-      (!disabled_passes->empty() &&                              \
-       disabled_passes->count(#pass_name) == 0)) {               \
-    simplified = recurseDown(simplified, [&var_info](Val* val) { \
-      return rules::pass_name(val, var_info);                    \
-    });                                                          \
-    logger->record(#pass_name, simplified);                      \
+#define RUN_PASS(pass_name)                                     \
+  if (disabled_passes == nullptr ||                             \
+      (!disabled_passes->empty() &&                             \
+       disabled_passes->count(#pass_name) == 0)) {              \
+    simplified = recurseDown(simplified, [&context](Val* val) { \
+      return rules::pass_name(val, context);                    \
+    });                                                         \
+    logger->record(#pass_name, simplified);                     \
   }
 
 // Requires that all the passes before the barrier to be converged before
@@ -1851,9 +1890,12 @@ Val* fundamentalDivisionWithRemainderProperty(
   if (old_simplified != simplified) \
   continue
 
-Val* simplifyExpr(Val* value, const std::list<VarInfo>& variables) {
+Val* simplifyExpr(
+    Val* value,
+    const std::list<VarInfo>& variables,
+    bool preserve_error) {
   FusionGuard fg(value->fusion());
-  const VarInfoMap var_info(variables);
+  const Context context(variables, preserve_error);
   auto logger = debug_print::createLogger(value);
 
   // nullptr -> disable nothing
@@ -1896,7 +1938,7 @@ Val* simplifyExpr(Val* value, const std::list<VarInfo>& variables) {
     RUN_PASS(reducePredicateRegisterUsage);
   }
 
-  auto unflattened = assoc_comm::unflatten(simplified, variables);
+  auto unflattened = assoc_comm::unflatten(simplified, context);
   logger->record(debug_print::kUnflattenName, unflattened);
   return unflattened;
 }
