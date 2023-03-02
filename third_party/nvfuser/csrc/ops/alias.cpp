@@ -528,7 +528,13 @@ TensorView* cat(const std::vector<TensorView*>& inputs, int cat_dim) {
         // extent_of_the_input_tensor - extent_of_the_second_tensor).
         //
         // TODO: what to do if inp_id is not a normal iterdomain, i.e.,
-        // broadcast, partial, etc?
+        // broadcast, partial, etc? For now, assume it's a normal
+        // IterDomain.
+        TORCH_INTERNAL_ASSERT(
+            inp_root_id->getIterType() == IterType::Iteration &&
+                !inp_root_id->maybePartial(),
+            "Unsupported IterDomain to concatenate: ",
+            inp_root_id->toString());
         out_root_id =
             IterDomainBuilder(inp_root_id).is_rfactor_domain(true).build();
         // The right pad of the last tensor is just zero

@@ -2234,11 +2234,9 @@ std::unordered_map<int, int> domainReorderAsRfactorMap(TensorView* tv) {
         // Transformations before rfactor, ignore those.
         continue;
       }
-      // auto pos = std::distance(reordered_ids.begin(), find_it);
-      // reordered_ids[pos] = resize->out();
       *find_it = resize->out();
     } else {
-      TORCH_INTERNAL_ASSERT(false);
+      TORCH_INTERNAL_ASSERT(false, "Unexpected expression: ", expr->toString());
     }
   }
 
@@ -2391,6 +2389,8 @@ void prepareForMemoryTypePromotion(Fusion* fusion) {
 void promoteProducerMemoryTypesOfResizedTensors(Fusion* fusion) {
   auto resized_tensors = getResizedTensors(fusion);
 
+  // Just make it simpler to promote memory types. Minimum is
+  // preferred. Increased as required.
   auto memoryTypeToInt = [](MemoryType mt1) -> int {
     switch (mt1) {
       case MemoryType::Local:

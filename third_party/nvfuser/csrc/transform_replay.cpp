@@ -495,6 +495,7 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
     const RootDomainMap& root_map,
     bool replay_swizzle) {
   FUSER_PERF_SCOPE("TransformReplay::replayCasP");
+
   // If this is a reduction operation, we may call transform_replay on the same
   // tensor view. When this happens, just return thet target view.
   if (consumer == producer)
@@ -530,10 +531,10 @@ std::pair<TensorDomain*, unsigned int> TransformReplay::replayCasP(
   BestEffortReplay forward_replay = BestEffortReplay::replayCasP(
       consumer, producer, producer_pos, root_map, false, !replay_swizzle, true);
 
-  //  Track dangling leaves which can be produced in
-  //  BestEffortReplay::replayCasP these don't have any equivalent in producer
-  //  so they're not in the map. We will simply map them to themselves so we
-  //  don't lose them.
+  // Track dangling leaves which can be produced in
+  // BestEffortReplay::replayCasP these don't have any equivalent in producer
+  // so they're not in the map. We will simply map them to themselves so we
+  // don't lose them.
   id_map forwarded_replay_map;
   auto forwarded_replay_leaves = forward_replay.getUnorderedLeafIDs();
   for (auto entry : forward_replay.getReplay()) {
@@ -955,6 +956,9 @@ void TransformPropagator::propagateC2P(TensorView* from, TensorView* to) {
   // current TransformPropagator might not contain the most amount of
   // information on how to do the correct transformation. The logic below tells
   // TransformPropagator to skip the replay when not necessary.
+  //
+  // Note on resize: When propagating transformations, resize is just
+  // skipped, or forwarded, so the matching here is done by skipping it.
   int new_pos =
       TransformReplay::getMatchedLeafPosWithoutReplayPasC(to, from, pos, true);
   bool debug = isDebugDumpEnabled(DebugDumpOption::TransformPropagator);

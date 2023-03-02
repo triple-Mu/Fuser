@@ -432,8 +432,8 @@ BestEffortReplay::BestEffortReplay(
 
     // Map target_expr inputs to replay domain directly
     for (const auto t_i : c10::irange(target_id_inps.size())) {
-      //  There might not be a mapping, that could be okay (depends on rfactor
-      //  checking).
+      // There might not be a mapping, that could be okay (depends on rfactor
+      // checking).
       auto it = target2replay_id_map_.find(target_id_inps[t_i]);
       if (it != target2replay_id_map_.end()) {
         replay_inps[t_i] = getReplayForwardedId(it->second);
