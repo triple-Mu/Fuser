@@ -526,12 +526,12 @@ class CudaKernelGenerator : private OptOutConstDispatch {
       // Out of line predicate variant
       code_ << "<" << dtype << ", " << vec_size << ">("
             << genInline(ldst->out()->as<kir::TensorIndex>()->index()) << ","
-            << genVectorPointer(ldst->in(), dtype, vec_size) << ");\n";
+            << genInline(ldst->in()->as<kir::TensorIndex>()->index()) << ");\n";
     } else {
       // Inline predicate variant
       code_ << "<" << dtype << ", " << vec_size << ">("
             << genInline(ldst->out()->as<kir::TensorIndex>()->index()) << ","
-            << genVectorPointer(ldst->in(), dtype, vec_size) << ","
+            << genInline(ldst->in()->as<kir::TensorIndex>()->index()) << ","
             << genInline(ldst->predicate()) << ");\n";
     }
   }
@@ -548,11 +548,20 @@ class CudaKernelGenerator : private OptOutConstDispatch {
           << ");\n";
   }
 
-  void handle(const kir::SMemAddress* sop) final {
+  void handle(const kir::BaseAddress* sop) final {
     if (!print_inline_) {
       indent() << gen(sop->output(0)) << " = ";
     }
-    code_ << "toSmem(" << ir_utils::varName(sop->smemTv()) << ")";
+    switch (sop->tv()->getMemoryType()) {
+      case MemoryType::Shared:
+        code_ << "toSmem(" << ir_utils::varName(sop->tv()) << ")";
+        break;
+      case MemoryType::Global:
+        code_ << ir_utils::varName(sop->tv()) << ".data";
+        break;
+      default:
+        TORCH_INTERNAL_ASSERT(false, "Unsupported input for kir::BaseAddress");
+    }
     if (!print_inline_) {
       code_ << ";\n";
     }

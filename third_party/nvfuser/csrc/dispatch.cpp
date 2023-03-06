@@ -41,6 +41,10 @@ template <typename T>
 void Val::dispatch(T handler, Val* val) {
   switch (*(val->getValType())) {
     case ValType::Scalar:
+      if (std::holds_alternative<PointerOf>(val->getDataType()->type)) {
+        ptr(handler)->handle(val->as<Int>());
+        return;
+      }
       switch (std::get<PrimDataType>(val->getDataType()->type)) {
         case DataType::Bool:
           ptr(handler)->handle(val->as<Bool>());
@@ -273,8 +277,8 @@ void Expr::dispatch(T handler, Expr* expr) {
     ptr(handler)->handle(expr->as<kir::AllocateFusedReduction>());
     return;
   }
-  if (expr->isStrictlyA<kir::SMemAddress>()) {
-    ptr(handler)->handle(expr->as<kir::SMemAddress>());
+  if (expr->isStrictlyA<kir::BaseAddress>()) {
+    ptr(handler)->handle(expr->as<kir::BaseAddress>());
     return;
   }
   TORCH_INTERNAL_ASSERT(false, "Unknown exprtype in dispatch!");
@@ -294,6 +298,10 @@ template <typename T>
 void Val::constDispatch(T handler, const Val* val) {
   switch (*(val->getValType())) {
     case ValType::Scalar:
+      if (std::holds_alternative<PointerOf>(val->getDataType()->type)) {
+        ptr(handler)->handle(val->as<Int>());
+        return;
+      }
       switch (std::get<PrimDataType>(val->getDataType()->type)) {
         case DataType::Bool:
           ptr(handler)->handle(val->as<Bool>());
@@ -530,8 +538,8 @@ void Expr::constDispatch(T handler, const Expr* expr) {
     ptr(handler)->handle(expr->as<kir::AllocateFusedReduction>());
     return;
   }
-  if (expr->isStrictlyA<kir::SMemAddress>()) {
-    ptr(handler)->handle(expr->as<kir::SMemAddress>());
+  if (expr->isStrictlyA<kir::BaseAddress>()) {
+    ptr(handler)->handle(expr->as<kir::BaseAddress>());
     return;
   }
   TORCH_INTERNAL_ASSERT(false, "Unknown exprtype in dispatch!");
@@ -562,6 +570,10 @@ template <typename T>
 void Val::mutatorDispatch(T mutator, Val* val) {
   switch (*(val->getValType())) {
     case ValType::Scalar:
+      if (std::holds_alternative<PointerOf>(val->getDataType()->type)) {
+        ptr(mutator)->mutate(val->as<Int>());
+        return;
+      }
       switch (std::get<PrimDataType>(val->getDataType()->type)) {
         case DataType::Bool:
           ptr(mutator)->mutate(val->as<Bool>());
@@ -888,7 +900,7 @@ void OptOutConstDispatch::handle(const kir::VectorizedWelfordOp* stmt) {
 void OptOutConstDispatch::handle(const kir::AllocateFusedReduction* stmt) {
   unhandled(stmt);
 }
-void OptOutConstDispatch::handle(const kir::SMemAddress* stmt) {
+void OptOutConstDispatch::handle(const kir::BaseAddress* stmt) {
   unhandled(stmt);
 }
 
@@ -1062,7 +1074,7 @@ void OptOutDispatch::handle(kir::VectorizedWelfordOp* stmt) {
 void OptOutDispatch::handle(kir::AllocateFusedReduction* stmt) {
   unhandled(stmt);
 }
-void OptOutDispatch::handle(kir::SMemAddress* stmt) {
+void OptOutDispatch::handle(kir::BaseAddress* stmt) {
   unhandled(stmt);
 }
 

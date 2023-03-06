@@ -18,6 +18,7 @@
 #include <complex>
 #include <regex>
 #include <sstream>
+#include <string>
 
 namespace nvfuser {
 

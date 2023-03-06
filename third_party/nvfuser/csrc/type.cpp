@@ -59,6 +59,11 @@ bool isIntegralType(DataType dtype) {
       dtype.type);
 }
 
+bool isPointerType(DataType dtype) {
+  return std::holds_alternative<PointerOf>(dtype.type) ||
+      dtype == DataType::SMemAddress;
+}
+
 bool isComplexType(DataType dtype) {
   TORCH_CHECK(
       dtype != DataType::Null,
@@ -1063,6 +1068,9 @@ std::string stringifyThread(const ParallelType ptype) {
 }
 
 std::string typePrefix(const DataType data_type) {
+  if (std::holds_alternative<PointerOf>(data_type.type)) {
+    return "ptr";
+  }
   switch (std::get<PrimDataType>(data_type.type)) {
     case DataType::Bool:
       return "b";
