@@ -284,6 +284,23 @@ Val* recurseDown(Val* value, std::function<Val*(Val*)> rule) {
   return value;
 }
 
+inline RegisterType promoteRegisterType(RegisterType t1, RegisterType t2) {
+  if (t1 == RegisterType::Unknown) {
+    return t2;
+  }
+  if (t2 == RegisterType::Unknown) {
+    return t1;
+  }
+  if (t1 == RegisterType::GeneralPurpose ||
+      t2 == RegisterType::GeneralPurpose) {
+    return RegisterType::GeneralPurpose;
+  }
+  if (t1 == RegisterType::Uniform || t2 == RegisterType::Uniform) {
+    return RegisterType::Uniform;
+  }
+  return RegisterType::Immediate;
+}
+
 RegisterType getRegisterType(Val* value, const Context& context) {
   if (auto ns = dynamic_cast<NamedScalar*>(value)) {
     if (ns->getParallelIndex() == ParallelType::TIDx ||
@@ -295,28 +312,34 @@ RegisterType getRegisterType(Val* value, const Context& context) {
   if (value->isConstScalar()) {
     return RegisterType::Immediate;
   }
-  if (context.has(value) && context.info(value).is_compile_time_const) {
+  if (context.has(value) && context.info(value).is_unrolled_loop_index) {
     return RegisterType::Immediate;
   }
   if (auto def = value->definition()) {
     RegisterType result = RegisterType::Unknown;
     for (auto inp : def->inputs()) {
       auto inp_rtype = getRegisterType(inp, context);
-      if (inp_rtype == RegisterType::GeneralPurpose) {
-        return RegisterType::GeneralPurpose;
-      }
-      if (result == RegisterType::Unknown) {
-        result = inp_rtype;
-        continue;
-      }
-      if (result == RegisterType::Uniform ||
-          inp_rtype == RegisterType::Uniform) {
-        result = RegisterType::Uniform;
-      }
+      result = promoteRegisterType(result, inp_rtype);
     }
     return result;
   }
   return RegisterType::Uniform;
+}
+
+bool hasUnrolledLoopIndex(Val* value, const Context& context) {
+  if (context.has(value) && context.info(value).is_unrolled_loop_index) {
+    return true;
+  }
+  auto def = value->definition();
+  if (def == nullptr) {
+    return false;
+  }
+  for (auto inp : def->inputs()) {
+    if (hasUnrolledLoopIndex(inp, context)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 } // namespace
@@ -1146,15 +1169,6 @@ bool isPositive(Val* value, const Context& context) {
   return false;
 }
 
-bool isZero(Val* value) {
-  value = foldConstants(value);
-  if (value->getBool() == false || value->isZeroInt() ||
-      value->getDouble() == 0.0) {
-    return true;
-  }
-  return false;
-}
-
 bool isNonZero(Val* value, const Context& context) {
   value = foldConstants(value);
   if (value->getInt().has_value() && *value->getInt() != 0) {
@@ -1399,7 +1413,7 @@ Val* eliminateTrivialPredicate(Val* value, const Context& context) {
       return value->fusion()->falseVal();
     }
   }
-  if (prove::isZero(bop->rhs())) {
+  if (bop->rhs()->isZero()) {
     if (op == BinaryOpType::GE && prove::isNonNegative(bop->lhs(), context)) {
       return value->fusion()->trueVal();
     } else if (
@@ -1418,7 +1432,7 @@ Val* eliminateTrivialPredicate(Val* value, const Context& context) {
         op == BinaryOpType::Eq && prove::isNonZero(bop->lhs(), context)) {
       return value->fusion()->falseVal();
     }
-  } else if (prove::isZero(bop->lhs())) {
+  } else if (bop->lhs()->isZero()) {
     if (op == BinaryOpType::LE && prove::isNonNegative(bop->rhs(), context)) {
       return value->fusion()->trueVal();
     } else if (
@@ -1633,87 +1647,76 @@ Val* reducePredicateRegisterUsage(Val* value, const Context& context) {
   if (!hasSimilarType(ltype, rtype)) {
     return value;
   }
-  // Redistribute terms. We always put general purposed registers to the
-  // left, and immediates to the right. If there is no immediates, then
-  // we put uniform registers to the right, otherwise we put uniform
-  // registers to the left.
-  bool moved = false;
-  std::vector<Val*> new_lhs;
-  std::vector<Val*> new_rhs;
-  std::vector<Val*> lhs_uniform;
-  std::vector<Val*> rhs_uniform;
-  auto neg = [&](Val* x) {
-    moved = true;
-    return IrBuilder::negExpr(x);
-  };
-  // Redistribute lhs_terms into new_lhs, new_rhs, and lhs_uniform, can only
-  // be called once.
-  auto redist_lhs = [&](const std::vector<Val*>& lhs_terms) {
-    for (auto inp : lhs_terms) {
-      if (prove::isZero(inp)) {
+
+  // Classify terms into unroll and other
+  auto classify = [&context](const std::vector<Val*>& terms) {
+    std::vector<Val*> unroll, other;
+    RegisterType unroll_rtype = RegisterType::Unknown,
+                 other_rtype = RegisterType::Unknown;
+    for (auto inp : terms) {
+      if (inp->isZero()) {
         continue;
       }
-      switch (getRegisterType(inp, context)) {
-        case RegisterType::GeneralPurpose:
-          new_lhs.emplace_back(inp);
-          break;
-        case RegisterType::Uniform:
-          lhs_uniform.emplace_back(inp);
-          break;
-        case RegisterType::Immediate:
-          new_rhs.emplace_back(neg(inp));
-          break;
-        default:
-          TORCH_INTERNAL_ASSERT(false, "Unknown register type");
+      auto rtype = getRegisterType(inp, context);
+      if (hasUnrolledLoopIndex(inp, context)) {
+        unroll.push_back(inp);
+        unroll_rtype = promoteRegisterType(unroll_rtype, rtype);
+      } else {
+        other.push_back(inp);
+        other_rtype = promoteRegisterType(other_rtype, rtype);
       }
     }
+    return std::make_tuple(unroll, unroll_rtype, other, other_rtype);
   };
-  // Redistribute rhs_terms into new_lhs, new_rhs, and rhs_uniform, can only
-  // be called once.
-  auto redist_rhs = [&](const std::vector<Val*>& rhs_terms) {
-    for (auto inp : rhs_terms) {
-      if (prove::isZero(inp)) {
-        continue;
-      }
-      switch (getRegisterType(inp, context)) {
-        case RegisterType::GeneralPurpose:
-          new_lhs.emplace_back(neg(inp));
-          break;
-        case RegisterType::Uniform:
-          rhs_uniform.emplace_back(inp);
-          break;
-        case RegisterType::Immediate:
-          new_rhs.emplace_back(inp);
-          break;
-        default:
-          TORCH_INTERNAL_ASSERT(false, "Unknown register type");
-      }
-    }
-  };
-  if (auto lhs_fop = toFlattenedAdd(bop->lhs()->definition())) {
-    redist_lhs(lhs_fop->inputs());
-  } else {
-    redist_lhs({bop->lhs()});
-  }
-  if (auto rhs_fop = toFlattenedAdd(bop->rhs()->definition())) {
-    redist_rhs(rhs_fop->inputs());
-  } else {
-    redist_rhs({bop->rhs()});
-  }
-  if (new_rhs.empty()) {
-    new_rhs = rhs_uniform;
-    for (auto inp : lhs_uniform) {
-      new_rhs.emplace_back(neg(inp));
-    }
-  } else {
-    new_lhs.insert(new_lhs.end(), lhs_uniform.begin(), lhs_uniform.end());
-    for (auto inp : rhs_uniform) {
-      new_lhs.emplace_back(neg(inp));
-    }
-  }
-  if (!moved) {
+
+  auto [lhs_unroll, lhs_unroll_rtype, lhs_other, lhs_other_rtype] = classify(
+      isFlattenedAdd(bop->lhs()) ? bop->lhs()->definition()->inputs()
+                                 : std::vector<Val*>{bop->lhs()});
+  auto [rhs_unroll, rhs_unroll_rtype, rhs_other, rhs_other_rtype] = classify(
+      isFlattenedAdd(bop->rhs()) ? bop->rhs()->definition()->inputs()
+                                 : std::vector<Val*>{bop->rhs()});
+  auto unroll_rtype = promoteRegisterType(lhs_unroll_rtype, rhs_unroll_rtype);
+  auto other_rtype = promoteRegisterType(lhs_other_rtype, rhs_other_rtype);
+
+  // it makes sense to move:
+  // unroll + other == other
+  // unroll + other == unroll
+  // unroll + other == 0
+  // but not:
+  // unroll == other
+  // unroll == unroll
+  // other == other
+  // unroll == 0
+  // other == 0
+  bool can_move = (!lhs_unroll.empty() && !lhs_other.empty()) ||
+      (!rhs_unroll.empty() && !rhs_other.empty());
+  if (!can_move) {
     return value;
   }
+
+  bool can_save_general_purpose_register =
+      (other_rtype == RegisterType::GeneralPurpose &&
+       (unroll_rtype == RegisterType::Uniform ||
+        unroll_rtype == RegisterType::Immediate));
+  bool can_save_uniform_register =
+      (other_rtype == RegisterType::Uniform &&
+       unroll_rtype == RegisterType::Immediate);
+  bool can_save_register =
+      (can_save_general_purpose_register || can_save_uniform_register);
+  if (!can_save_register) {
+    return value;
+  }
+
+  std::vector<Val*> new_lhs = std::move(lhs_other);
+  for (auto v : rhs_other) {
+    new_lhs.push_back(IrBuilder::negExpr(v));
+  }
+
+  std::vector<Val*> new_rhs = std::move(rhs_unroll);
+  for (auto v : lhs_unroll) {
+    new_rhs.push_back(IrBuilder::negExpr(v));
+  }
+
   Val* lhs = nullptr;
   Val* rhs = nullptr;
   if (new_lhs.size() == 0) {
