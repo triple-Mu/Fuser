@@ -1466,7 +1466,16 @@ class TORCH_CUDA_CU_API IterDomain : public Val {
       bool trim_out_of_bounds);
 
   //! Resize an IterDomain by expanding both the left and right sides
-  //! by given widths. Optionally mark it as an rfactor domain
+  //! by given widths. The resulting IterDomain has an extent of
+  //! (left_expansion + in->extent() + right_expansion). Note that the
+  //! expansion factors can be negative, meaning the input IterDomain
+  //! is shrunk. This is the case when resize is used to represent
+  //! slice.
+  //!
+  //! When mark_as_rfactor is true, the output IterDomain
+  //! is marked as an rfactor domain. For example, expressions such as
+  //! PadOp and SliceOp resize IterDomains and generate rfactor
+  //! resized domains.
   static IterDomain* resize(
       IterDomain* in,
       Val* left_expansion,

@@ -321,7 +321,7 @@ class Index {
   // get the strides of a tensor used for the index lowering
   static std::vector<Val*> getStrides(const TensorView* tv);
 
-  // get the root indices of a tensor used for the index lowering
+  // get the root indices of a consumer tensor
   static std::vector<Val*> getConsumerRootIndices(
       const TensorView* tv,
       const std::vector<kir::ForLoop*>& loops,
