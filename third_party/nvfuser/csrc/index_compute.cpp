@@ -2423,36 +2423,6 @@ std::vector<PredicateDomainInfo> getNonDivisibleConsumerDomainsToPredicate(
   return pred_info_vec;
 }
 
-// When resized, make sure the index at the IterDomain to resize is
-// within the valid range.
-std::vector<PredicateDomainInfo> getResizedDomainsToPredicate(
-    TensorView* consumer_tv) {
-  std::vector<PredicateDomainInfo> pred_info_vec;
-
-  auto exprs = StmtSort::getExprsBetween(
-      consumer_tv->fusion(),
-      {consumer_tv->getRootDomain().begin(),
-       consumer_tv->getRootDomain().end()},
-      {consumer_tv->domain()->domain().begin(),
-       consumer_tv->domain()->domain().end()});
-
-  for (auto resize : ir_utils::filterByType<Resize>(exprs)) {
-    // If the input is a root domain, it is already predicated by the
-    // normal predicate logic
-    if (std::find(
-            consumer_tv->getRootDomain().begin(),
-            consumer_tv->getRootDomain().end(),
-            resize->in()) != consumer_tv->getRootDomain().end()) {
-      continue;
-    }
-
-    PredicateDomainInfo info{resize->in(), {resize->in()}, true};
-    pred_info_vec.emplace_back(info);
-  }
-
-  return pred_info_vec;
-}
-
 bool needsPadding(TensorView* tv) {
   auto shift_expr = dynamic_cast<ShiftOp*>(tv->definition());
   auto gather_expr = dynamic_cast<GatherOp*>(tv->definition());
@@ -2932,12 +2902,6 @@ std::vector<RootPredicateInfo> Index::getReferenceRootPredicates(
       contig_id_infos.end(),
       non_divisible_splits.begin(),
       non_divisible_splits.end());
-
-  auto resized_domains_to_predicate = getResizedDomainsToPredicate(consumer_tv);
-  contig_id_infos.insert(
-      contig_id_infos.end(),
-      resized_domains_to_predicate.begin(),
-      resized_domains_to_predicate.end());
 
   std::vector<RootPredicateInfo> pred_info_vec;
 
