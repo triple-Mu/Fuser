@@ -8694,9 +8694,6 @@ TEST_F(NVFuserTest, FusionGridReductionWithNonExactParallelDimensions2_CUDA) {
   tv5->axis(1)->parallelize(ParallelType::BIDy);
   tv5->axis(2)->parallelize(ParallelType::BIDz);
 
-  // TODO: This needs a fix for issue #1102.
-  // Also, need to allow predicated grid reductions.
-#if 0
   FusionExecutor fe;
   fe.compileFusion(&fusion);
 
@@ -8713,7 +8710,6 @@ TEST_F(NVFuserTest, FusionGridReductionWithNonExactParallelDimensions2_CUDA) {
 
   testValidate(
       &fusion, outputs, aten_inputs, {ref1, ref2, ref3}, __LINE__, __FILE__);
-#endif
 }
 
 TEST_F(NVFuserTest, FusionGridWelfordWithNonExactParallelDimensions2_CUDA) {
@@ -8747,9 +8743,6 @@ TEST_F(NVFuserTest, FusionGridWelfordWithNonExactParallelDimensions2_CUDA) {
   tv5->axis(1)->parallelize(ParallelType::BIDy);
   tv5->axis(2)->parallelize(ParallelType::BIDz);
 
-  // TODO: needs a fix for issue #1102
-  // Also, need to allow predicated grid reductions.
-#if 0
   FusionExecutor fe;
   fe.compileFusion(&fusion);
 
@@ -8766,7 +8759,6 @@ TEST_F(NVFuserTest, FusionGridWelfordWithNonExactParallelDimensions2_CUDA) {
 
   testValidate(
       &fusion, outputs, aten_inputs, {ref1, ref2, ref3}, __LINE__, __FILE__);
-#endif
 }
 
 // Repro of issue #1102
