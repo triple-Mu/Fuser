@@ -503,7 +503,7 @@ TensorView* cat(const std::vector<TensorView*>& inputs, int cat_dim) {
 
   Val* left_pad = FusionGuard::getCurFusion()->zeroVal();
   Val* right_pad = concat_ext;
-  std::vector<Val*> expanded_inputs(inputs.size());
+  std::vector<Val*> resized_inputs(inputs.size());
   for (const auto input_idx : c10::irange(inputs.size())) {
     const auto& inp_dom = inp_doms.at(input_idx);
     std::vector<IterDomain*> root_ids(ndims);
@@ -565,13 +565,13 @@ TensorView* cat(const std::vector<TensorView*>& inputs, int cat_dim) {
 
     IrBuilder::create<PadOp>(resized_inp, inputs.at(input_idx), pad_widths);
 
-    expanded_inputs.at(input_idx) = resized_inp;
+    resized_inputs.at(input_idx) = resized_inp;
   }
 
-  // Now all of expanded_inputs have the same shape as the out tensor
-  auto out = ops::newOutputTV(expanded_inputs, dtype);
+  // Now all of resized_inputs have the same shape as the out tensor
+  auto out = ops::newOutputTV(resized_inputs, dtype);
 
-  IrBuilder::create<CatOp>(out, expanded_inputs, cat_dim);
+  IrBuilder::create<CatOp>(out, resized_inputs, cat_dim);
 
   return out;
 }

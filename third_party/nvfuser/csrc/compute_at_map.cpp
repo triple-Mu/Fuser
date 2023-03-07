@@ -170,10 +170,10 @@ bool IterDomainGraph::exprsMap(
   }
 
   if (first->isA<Resize>()) {
-    auto first_expand = first->as<Resize>();
-    auto second_expand = second->as<Resize>();
-    if (!first_expand->leftExpand()->sameAs(second_expand->leftExpand()) ||
-        !first_expand->rightExpand()->sameAs(second_expand->rightExpand())) {
+    auto first_resize = first->as<Resize>();
+    auto second_resize = second->as<Resize>();
+    if (!first_resize->leftExpand()->sameAs(second_resize->leftExpand()) ||
+        !first_resize->rightExpand()->sameAs(second_resize->rightExpand())) {
       return false;
     }
   }

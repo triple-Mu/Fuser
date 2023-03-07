@@ -55,7 +55,7 @@ class OrderedIdInformation : public OptInDispatch {
 
   void handle(Swizzle2D* swizzle) override;
 
-  void handle(Resize* expand) override;
+  void handle(Resize* resize) override;
 
   // Track which root ids were used to generate each iter domain
   std::unordered_map<IterDomain*, VectorOfUniqueEntries<IterDomain*>>
