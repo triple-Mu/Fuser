@@ -2269,9 +2269,29 @@ class TORCH_CUDA_CU_API PadOp : public Expr {
 
   std::vector<int> getPaddedAxes() const;
 
+  //! Return all pad widths
   std::vector<Val*> getPadWidths() const;
 
+  //! Return pad widths of the given axis
   std::pair<Val*, Val*> getPadWidths(int axis) const;
+
+ private:
+  //! Offset of pad_width inputs in the input vector
+  int getPadWidthInputOffset() const {
+    return 1;
+  }
+
+  //! Iterator to the first pad_width input
+  auto getPadWidthInputBegin() const {
+    return inputs().cbegin() + getPadWidthInputOffset();
+  }
+
+  //! Iterator to the end of the pad_width inputs
+  auto getPadWidthInputEnd() const {
+    return inputs().cend();
+  }
+
+  int getNumPaddedAxes() const;
 };
 
 // Similar to at::indexing::Slice

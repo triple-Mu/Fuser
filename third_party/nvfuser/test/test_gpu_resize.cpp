@@ -450,6 +450,54 @@ TEST_F(NVFuserTest, FusionResizePadScheduler3_CUDA) {
 }
 #endif
 
+// Two pad exprs, both using the same symbolic pad widths, segmented
+// into two kernels. Make sure the symbolic inputs are available to
+// both of the segmented kernels.
+TEST_F(NVFuserTest, FusionResizePadScheduler4_CUDA) {
+  auto fusion = std::make_unique<Fusion>();
+  FusionGuard fg(fusion.get());
+
+  auto tv0 = makeSymbolicTensor(2);
+  fusion->addInput(tv0);
+
+  auto left_pad = IrBuilder::create<Int>();
+  fusion->addInput(left_pad);
+  auto right_pad = IrBuilder::create<Int>();
+  fusion->addInput(right_pad);
+
+  auto tv1 = pad(tv0, {left_pad, right_pad});
+  auto tv2 = sum(tv1, {0});
+  fusion->addOutput(tv2);
+
+  auto tv3 = pad(tv0, {left_pad, right_pad});
+  auto tv4 = sum(tv3, {1});
+  fusion->addOutput(tv4);
+
+  std::vector<int64_t> shape({99, 111});
+
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::manual_seed(0);
+
+  auto t0 = at::randn(shape, options);
+  std::vector<int64_t> pad_extents{1, 1};
+  std::vector<c10::IValue> aten_inputs({t0, 1, 1});
+
+  FusionExecutorCache executor_cache(std::move(fusion));
+  auto cg_outputs = executor_cache.runFusionWithInputs(aten_inputs);
+
+  auto t0_double = t0.to(at::kDouble);
+  auto t2 = at::pad(t0_double, {1, 1}).sum({0});
+  auto t4 = at::pad(t0_double, {1, 1}).sum({1});
+
+  testValidate(
+      executor_cache.fusion(),
+      cg_outputs,
+      aten_inputs,
+      {t2, t4},
+      __LINE__,
+      __FILE__);
+}
+
 // Trivial cat
 TEST_F(NVFuserTest, FusionResizeCat1_CUDA) {
   Fusion fusion;

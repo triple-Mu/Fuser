@@ -16,6 +16,7 @@
 #include <c10/util/irange.h>
 
 #include <complex>
+#include <iterator>
 #include <numeric>
 #include <regex>
 #include <sstream>
@@ -3083,7 +3084,7 @@ PadOp::PadOp(
   addOutput(out);
   addInput(inp);
   for (auto width : pad_widths) {
-    addAttribute(width);
+    addInput(width);
   }
 }
 
@@ -3102,9 +3103,16 @@ std::string PadOp::toInlineString(int indent_size) const {
   TORCH_CHECK(false, "Tensor op can not be printed inline");
 }
 
+int PadOp::getNumPaddedAxes() const {
+  int num_pad_inputs =
+      std::distance(getPadWidthInputBegin(), getPadWidthInputEnd());
+  TORCH_INTERNAL_ASSERT(num_pad_inputs % 2 == 0);
+  return num_pad_inputs / 2;
+}
+
 std::vector<int> PadOp::getPaddedAxes() const {
   auto num_dims = out()->as<TensorView>()->getRootDomain().size();
-  auto num_padded_axes = attributes_.size() / 2;
+  auto num_padded_axes = getNumPaddedAxes();
   std::vector<int> padded_axes(num_padded_axes);
   std::iota(padded_axes.begin(), padded_axes.end(), num_dims - num_padded_axes);
   return padded_axes;
@@ -3113,8 +3121,8 @@ std::vector<int> PadOp::getPaddedAxes() const {
 std::vector<Val*> PadOp::getPadWidths() const {
   std::vector<Val*> pad_widths;
   std::transform(
-      attributes_.begin(),
-      attributes_.end(),
+      getPadWidthInputBegin(),
+      getPadWidthInputEnd(),
       std::back_inserter(pad_widths),
       [](Statement* attr) { return attr->as<Val>(); });
   return pad_widths;
@@ -3122,7 +3130,7 @@ std::vector<Val*> PadOp::getPadWidths() const {
 
 std::pair<Val*, Val*> PadOp::getPadWidths(int axis) const {
   auto num_dims = static_cast<int>(out()->as<TensorView>()->nDims());
-  auto num_padded_axes = static_cast<int>(attributes_.size() / 2);
+  auto num_padded_axes = getNumPaddedAxes();
 
   if (axis < 0) {
     axis += num_dims;
@@ -3139,7 +3147,8 @@ std::pair<Val*, Val*> PadOp::getPadWidths(int axis) const {
   TORCH_INTERNAL_ASSERT(pad_idx >= 0 && pad_idx < num_dims);
 
   return std::make_pair(
-      attribute(pad_idx)->as<Val>(), attribute(pad_idx + 1)->as<Val>());
+      (*(getPadWidthInputBegin() + pad_idx * 2))->as<Val>(),
+      (*(getPadWidthInputBegin() + pad_idx * 2 + 1))->as<Val>());
 }
 
 SliceOp::SliceOp(
