@@ -5,6 +5,7 @@ from functools import partial
 import re
 from typing import List
 import unittest
+from itertools import permutations
 
 import torch
 from torch.testing._internal.common_utils import run_tests, TEST_WITH_ROCM, TestCase
@@ -1361,6 +1362,29 @@ class TestNvFuserFrontend(TestCase):
 
         for n, e in zip(nvf_out, eager_outs):
             self.assertEqual(n, e)
+
+    def test_output_stride_order(self) :
+        inputs = [
+            torch.range(0, 119).reshape(2, 3, 4, 5).cuda().float(),
+        ]
+        eager_out = inputs[0] + 3.0
+
+        for perm in permutations(range(4), 4):
+
+            def fusion_func(fd: FusionDefinition) :
+                t0 = fd.from_pytorch(inputs[0])
+                c0 = fd.define_constant(3.0)
+                t1 = fd.ops.add(t0, c0)
+                fd.add_output(t1, perm)
+
+            nvf_out, _ = self.exec_nvfuser(fusion_func, inputs)
+            self.assertEqual(eager_out, nvf_out[0])
+
+            nvf_stride = nvf_out[0].stride()
+            sorted_stride = list(nvf_stride)
+            for idx, axis in enumerate(perm):
+                sorted_stride[axis] = nvf_stride[idx]
+            self.assertTrue(sorted(sorted_stride, reverse=True) == sorted_stride)
 
 
 if __name__ == '__main__':
