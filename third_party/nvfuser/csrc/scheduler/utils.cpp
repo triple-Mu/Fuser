@@ -1359,21 +1359,10 @@ std::vector<TensorView*> getInputsOutputsWithInnerDim(
   return vectorizable_tensors;
 }
 
-// Returns disjoint view sets mapped onto the given reference. Returns a pair
-// of vectors of size rfactorDomain of reference. Vector of
-// VectorOfUniqueEntries returns a const* to the disjoint set in
-// disjoint_view_set the iterdomain is mapped to. Integer vector represents
-// which disjoint view group the rfactor id belongs to. It's straight forward
-// to map from the former to the latter, but not the latter to former.
-//
-// Since we return a const* to entries in disjoint_view_set, it must be passed
-// in as a reference. Algorithm is N^2 based on number of dims in reference,
-// but generating the disjoint view set is likely the limiter on perf of this
-// function.
-DisjointViewSetInfo getDisjointViewSetsOf(
+DisjointRFactorSetInfo getDisjointRFactorSetsOf(
     Fusion* fusion,
     TensorView* of,
-    DisjointSets<IterDomain*>& disjoint_view_set) {
+    DisjointSets<IterDomain*>& disjoint_rfactor_set) {
   auto rfactor_dom = of->getMaybeRFactorDomain();
   if (rfactor_dom.size() == 0) {
     return {};
@@ -1397,12 +1386,12 @@ DisjointViewSetInfo getDisjointViewSetsOf(
     }
 
     const auto& ref_group =
-        disjoint_view_set.getDisjointSetOf(rfactor_dom[ref_dim_i]);
+        disjoint_rfactor_set.getDisjointSetOf(rfactor_dom[ref_dim_i]);
 
     int other_dim_i = ref_dim_i;
     while (other_dim_i >= 0) {
       const auto& other_group =
-          disjoint_view_set.getDisjointSetOf(rfactor_dom[other_dim_i]);
+          disjoint_rfactor_set.getDisjointSetOf(rfactor_dom[other_dim_i]);
       if (&ref_group == &other_group) {
         disjoint_group_ids[other_dim_i] = current_group_id;
         disjoint_set_of_id[other_dim_i] = &ref_group;
@@ -1419,7 +1408,7 @@ DisjointViewSetInfo getDisjointViewSetsOf(
           disjoint_group_ids.begin(),
           disjoint_group_ids.end(),
           [](int i) { return i == -1; }),
-      "Failed to generate the view disjoint groups of the reference ",
+      "Failed to generate the rfactor disjoint groups of the reference ",
       of->toString());
 
   TORCH_INTERNAL_ASSERT(
@@ -1429,10 +1418,10 @@ DisjointViewSetInfo getDisjointViewSetsOf(
           [](const VectorOfUniqueEntries<IterDomain*>* ptr) {
             return ptr == nullptr;
           }),
-      "Failed to generate the view disjoint groups of the reference ",
+      "Failed to generate the rfactor disjoint groups of the reference ",
       of->toString());
 
-  DisjointViewSetInfo info;
+  DisjointRFactorSetInfo info;
   info.disjoint_sets_of_ref = disjoint_set_of_id;
   info.disjoint_set_ids = disjoint_group_ids;
   info.ref = of;
@@ -1453,9 +1442,9 @@ BroadcastMultipleInformation getBroadcastMultiples(
 
   std::vector<BroadcastMultiple> multiples(ref_root_domain.size());
 
-  auto disjoint_view_sets = disjointViewSets(fusion);
-  auto disjoint_set_information = scheduler_utils::getDisjointViewSetsOf(
-      fusion, reference_tv, disjoint_view_sets);
+  auto disjoint_rfactor_sets = disjointRFactorSets(fusion);
+  auto disjoint_set_information = scheduler_utils::getDisjointRFactorSetsOf(
+      fusion, reference_tv, disjoint_rfactor_sets);
 
   auto ref_disjoint_sets = disjoint_set_information.disjoint_sets_of_ref;
   auto ref_disjoint_set_ids = disjoint_set_information.disjoint_set_ids;
@@ -2121,10 +2110,10 @@ void BoundedDirectionalTransformPropagator::bothWays(
   propagate(from, pos, included_tvs, *options);
 }
 
-DisjointSets<IterDomain*> disjointViewSets(Fusion* fusion) {
+DisjointSets<IterDomain*> disjointRFactorSets(Fusion* fusion) {
   // Start from the exact iter domain graph of the fusion
   IterDomainGraph id_graph(fusion);
-  auto disjoint_view_ids = id_graph.exactNodes();
+  auto disjoint_rfactor_ids = id_graph.exactNodes();
 
   // If iter domains are involved in any transformation from root domains to
   // rfactor domains they should be considered "contaminated".
@@ -2135,22 +2124,22 @@ DisjointSets<IterDomain*> disjointViewSets(Fusion* fusion) {
               tv->getMaybeRFactorDomain().end()})) {
       if (expr->isA<Merge>()) {
         auto merge = expr->as<Merge>();
-        disjoint_view_ids.mapEntries(merge->inner(), merge->out());
-        disjoint_view_ids.mapEntries(merge->outer(), merge->out());
+        disjoint_rfactor_ids.mapEntries(merge->inner(), merge->out());
+        disjoint_rfactor_ids.mapEntries(merge->outer(), merge->out());
       } else if (expr->isA<Split>()) {
         auto split = expr->as<Split>();
-        disjoint_view_ids.mapEntries(split->in(), split->inner());
-        disjoint_view_ids.mapEntries(split->in(), split->outer());
+        disjoint_rfactor_ids.mapEntries(split->in(), split->inner());
+        disjoint_rfactor_ids.mapEntries(split->in(), split->outer());
       } else if (expr->isA<Resize>()) {
         auto resize = expr->as<Resize>();
-        disjoint_view_ids.mapEntries(resize->in(), resize->out());
+        disjoint_rfactor_ids.mapEntries(resize->in(), resize->out());
       } else {
         TORCH_INTERNAL_ASSERT(
             false, "Expression type: ", expr->toString(), " not supported.");
       }
     }
   }
-  return disjoint_view_ids;
+  return disjoint_rfactor_ids;
 }
 
 bool breakIsDisjoint(std::vector<int> group_ids, int pos) {

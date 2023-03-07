@@ -279,12 +279,13 @@ std::vector<TensorView*> getInputsOutputsWithInnerDim(
     bool vectorize_pass);
 
 // Holder return struct for the below function.
-struct DisjointViewSetInfo {
-  // const* to the disjoint set in disjoint_view_set passed in to
-  // getDisjointViewSetsOf each iterdomain in the rfactor of ref is mapped to.
+struct DisjointRFactorSetInfo {
+  // const* to the disjoint set in disjoint_rfactor_set passed in to
+  // getDisjointRFactorSetsOf each iterdomain in the rfactor of ref is mapped
+  // to.
   //
-  // WARNING: these pointers are relative to the disjoint_view_set reference
-  // passed into getDisjointViewSetsOf it's the user's responsibility to
+  // WARNING: these pointers are relative to the disjoint_rfactor_set reference
+  // passed into getDisjointRFactorSetsOf it's the user's responsibility to
   // maintain the lifetime of that reference to match this vector.
   std::vector<const VectorOfUniqueEntries<IterDomain*>*> disjoint_sets_of_ref;
 
@@ -297,21 +298,21 @@ struct DisjointViewSetInfo {
   TensorView* ref;
 };
 
-// Returns disjoint view sets mapped onto the given reference. Returns a pair
+// Returns disjoint rfactor sets mapped onto the given reference. Returns a pair
 // of vectors of size rfactorDomain of reference. Vector of
 // VectorOfUniqueEntries returns a const* to the disjoint set in
-// disjoint_view_set the iterdomain is mapped to. Integer vector represents
-// which disjoint view group the rfactor id belongs to. It's straight forward
+// disjoint_rfactor_set the iterdomain is mapped to. Integer vector represents
+// which disjoint rfactor group the rfactor id belongs to. It's straightforward
 // to map from the former to the latter, but not the latter to former.
 //
-// Since we return a const* to entries in disjoint_view_set, it must be passed
-// in as a reference. Algorithm is N^2 based on number of dims in reference,
-// but generating the disjoint view set is likely the limiter on perf of this
-// function.
-DisjointViewSetInfo getDisjointViewSetsOf(
+// Since we return a const* to entries in disjoint_rfactor_set, it must be
+// passed in as a reference. Algorithm is N^2 based on number of dims in
+// reference, but generating the disjoint rfactor set is likely the limiter on
+// perf of this function.
+DisjointRFactorSetInfo getDisjointRFactorSetsOf(
     Fusion* fusion,
     TensorView* of,
-    DisjointSets<IterDomain*>& disjoint_view_set);
+    DisjointSets<IterDomain*>& disjoint_rfactor_set);
 
 // Structure to hold byte multiples for break points. I.e. if we have the
 // tensors:
@@ -528,7 +529,7 @@ struct TORCH_CUDA_CU_API BoundedDirectionalTransformPropagator {
 // If IterDomains are disjoint in the returned set, then they are considered
 // "separable".
 // Warning: This pass generates the IdGraphs, not intended for use at runtime.
-TORCH_CUDA_CU_API DisjointSets<IterDomain*> disjointViewSets(Fusion* fusion);
+TORCH_CUDA_CU_API DisjointSets<IterDomain*> disjointRFactorSets(Fusion* fusion);
 
 // Makes sure that there are no group id's left of pos that match right of pos.
 // e.g.
