@@ -211,30 +211,12 @@ class ReplayRFactor : public ReplayTransformations {
   }
 
   void handle(Resize* resize) override {
-    auto id_in = resize->in();
-    auto it = id_map_.find(id_in);
+    TORCH_INTERNAL_ASSERT(false, "Unexpected expression: ", resize->toString());
+  }
+
+  void handle(Swizzle2D* swizzle) override {
     TORCH_INTERNAL_ASSERT(
-        it != id_map_.end(),
-        "Transform traversal failed, dependencies not met.");
-    auto mapped = (*it).second;
-    TORCH_INTERNAL_ASSERT(
-        leaf_ids_.find(mapped) != leaf_ids_.end(),
-        "Transform traversal failed, modified a node but it was not a leaf node.");
-
-    bool static_rfactor_output = static_rfactor_ids_.count(resize->out());
-    auto resized_id = IterDomain::resize(
-        mapped,
-        resize->leftExpand(),
-        resize->rightExpand(),
-        static_rfactor_output);
-
-    leaf_ids_.erase(mapped);
-    leaf_ids_[resized_id] = newCounter();
-    id_map_[resize->out()] = resized_id;
-
-    if (static_rfactor_ids_.count(resize->in())) {
-      updateRFactorDomain(resize->in(), nullptr, resize->out(), nullptr);
-    }
+        false, "Unexpected expression: ", swizzle->toString());
   }
 
   // The IterDomains in the original_domain that are being factored into the
