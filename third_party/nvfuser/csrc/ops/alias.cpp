@@ -415,15 +415,16 @@ TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
     auto inp_root_id = inp_dom[idx];
     IterDomain* out_root_id = nullptr;
     IterDomain* out_rf_id = nullptr;
-    if (idx < num_non_padded_dims) {
+    auto left_pad = normalized_pad_widths.at(idx * 2);
+    auto right_pad = normalized_pad_widths.at(idx * 2 + 1);
+    if (idx < num_non_padded_dims ||
+        (left_pad->isZeroInt() && right_pad->isZeroInt())) {
       out_root_id = inp_root_id->cloneWithoutRFactor();
       out_rf_id = out_root_id;
     } else {
       out_root_id =
           IterDomainBuilder(inp_root_id).is_rfactor_domain(true).build();
       // Expand the root domain and mark it as a rfactor domain
-      auto left_pad = normalized_pad_widths.at(idx * 2);
-      auto right_pad = normalized_pad_widths.at(idx * 2 + 1);
       out_rf_id = IterDomain::resize(out_root_id, left_pad, right_pad, true);
     }
     root_ids.at(idx) = out_root_id;
@@ -506,25 +507,21 @@ TensorView* cat(const std::vector<TensorView*>& inputs, int cat_dim) {
   std::vector<Val*> resized_inputs(inputs.size());
   for (const auto input_idx : c10::irange(inputs.size())) {
     const auto& inp_dom = inp_doms.at(input_idx);
-    std::vector<IterDomain*> root_ids(ndims);
-    std::vector<IterDomain*> rfactor_ids(ndims);
     std::vector<Val*> pad_widths(ndims * 2);
     for (const auto dim : c10::irange(ndims)) {
       auto inp_root_id = inp_dom.at(dim);
-      IterDomain* out_root_id = nullptr;
-      IterDomain* out_rf_id = nullptr;
+      Val* left_pad_i = nullptr;
+      Val* right_pad_i = nullptr;
       if (dim != cat_dim) {
-        out_root_id = inp_root_id->cloneWithoutRFactor();
-        out_rf_id = out_root_id;
-        pad_widths.at(dim * 2) = FusionGuard::getCurFusion()->zeroVal();
-        pad_widths.at(dim * 2 + 1) = FusionGuard::getCurFusion()->zeroVal();
+        left_pad_i = FusionGuard::getCurFusion()->zeroVal();
+        right_pad_i = FusionGuard::getCurFusion()->zeroVal();
       } else {
         // Resize the root ID so that it has the same extent as the
         // concatenated ID. The expansion of both left and right sides
         // is done so that this input tensor is positioned in a way
         // that corresponds to the concatenated dimension. For
         // example, the first input should be at the
-        // left-most position, so it is expaned only at the right side
+        // left-most position, so it is expanded only at the right side
         // with the expansion factor of
         // (total_concatenated_domain_extent -
         // extent_of_the_input_tensor). Similarly, the second tensor
@@ -540,32 +537,21 @@ TensorView* cat(const std::vector<TensorView*>& inputs, int cat_dim) {
                 !inp_root_id->maybePartial(),
             "Unsupported IterDomain to concatenate: ",
             inp_root_id->toString());
-        out_root_id =
-            IterDomainBuilder(inp_root_id).is_rfactor_domain(true).build();
         // The right pad of the last tensor is just zero
         right_pad = input_idx < inputs.size() - 1
             ? sub(right_pad, inp_root_id->getMaybeExpandedExtent())
             : FusionGuard::getCurFusion()->zeroVal();
-        out_rf_id = IterDomain::resize(out_root_id, left_pad, right_pad, true);
-        pad_widths.at(dim * 2) = left_pad;
-        pad_widths.at(dim * 2 + 1) = right_pad;
+        left_pad_i = left_pad;
+        right_pad_i = right_pad;
         left_pad = add(left_pad, inp_root_id->extent());
       }
-      root_ids.at(dim) = out_root_id;
-      rfactor_ids.at(dim) = out_rf_id;
+      // The pad width argument to pad should be ordered such that the
+      // widths of inner dimensions come first.
+      pad_widths.at((ndims - dim - 1) * 2) = left_pad_i;
+      pad_widths.at((ndims - dim - 1) * 2 + 1) = right_pad_i;
     }
 
-    auto resized_inp = IrBuilder::create<TensorView>(
-        IrBuilder::create<TensorDomain>(
-            root_ids,
-            rfactor_ids,
-            rfactor_ids,
-            TensorDomain::getContiguousContiguity(rfactor_ids)),
-        dtype);
-
-    IrBuilder::create<PadOp>(resized_inp, inputs.at(input_idx), pad_widths);
-
-    resized_inputs.at(input_idx) = resized_inp;
+    resized_inputs.at(input_idx) = pad(inputs.at(input_idx), pad_widths);
   }
 
   // Now all of resized_inputs have the same shape as the out tensor
