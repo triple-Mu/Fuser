@@ -124,8 +124,7 @@ class RootDomainMap;
 
 class TORCH_CUDA_CU_API TransformReplay {
  public:
-  // Replay producer as consumer, returns {producer,
-  // producer_compute_at_axis}.
+  // Replay producer as consumer, returns {producer, producer_compute_at_axis}.
   //
   // replay_resize indicates whether resize should be replayed or
   // ignored. It is only replayed when replaying a producer for

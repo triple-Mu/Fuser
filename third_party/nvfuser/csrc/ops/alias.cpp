@@ -377,7 +377,7 @@ TensorView* transpose(TensorView* x) {
 TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
   const auto& inp_dom = inp->domain()->noReductions();
 
-  const auto ndims = inp->domain()->noReductions().size();
+  const auto ndims = inp_dom.size();
 
   TORCH_CHECK(
       pad_widths.size() % 2 == 0 && pad_widths.size() / 2 <= ndims,
@@ -484,6 +484,11 @@ TensorView* cat(const std::vector<TensorView*>& inputs, int cat_dim) {
   TORCH_CHECK(
       cat_dim >= 0 && cat_dim < ndims, "Invalid dimension to cat: ", cat_dim);
 
+  // Special handling for the case where there's only one input
+  if (inputs.size() == 1) {
+    return set(inputs.at(0));
+  }
+
   Val* concat_ext = nullptr;
 
   for (const auto i : c10::irange(inputs.size())) {
@@ -580,18 +585,17 @@ TensorView* slice(TensorView* inp, const std::vector<Slice>& ranges) {
 
   TORCH_CHECK(ndims == static_cast<int>(ranges.size()));
 
-  auto normalize_slice_range = [](const Slice& range, Val* extent) -> Slice {
-    auto normalized_range = range;
+  auto normalize_slice_range = [](Slice range, Val* extent) -> Slice {
     if (range.start == nullptr) {
-      normalized_range.start = FusionGuard::getCurFusion()->zeroVal();
+      range.start = FusionGuard::getCurFusion()->zeroVal();
     }
     if (range.stop == nullptr) {
-      normalized_range.stop = extent;
+      range.stop = extent;
     }
     if (range.step == nullptr) {
-      normalized_range.step = FusionGuard::getCurFusion()->oneVal();
+      range.step = FusionGuard::getCurFusion()->oneVal();
     }
-    return normalized_range;
+    return range;
   };
 
   for (auto& range : ranges) {

@@ -563,7 +563,7 @@ inline void rotateLoop(
 
 //! Certain tensors may need to be placed on shared or global memory
 //! due to data dependencies caused by resize operations. Create
-//! cachees of those tensors so that original operations producing
+//! caches of those tensors so that original operations producing
 //! them should keep using the same memory. This avoids, for example,
 //! reductions to global memory.
 TORCH_CUDA_CU_API void prepareForMemoryTypePromotion(Fusion* fusion);

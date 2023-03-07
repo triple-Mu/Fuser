@@ -2447,7 +2447,7 @@ void promoteProducerMemoryTypesOfResizedTensors(Fusion* fusion) {
     }
   }
 
-  // Iterate over required_tensors so that promotion is done in a
+  // Iterate over resized_tensors so that promotion is done in a
   // deterministic order
   for (auto resized_tensor : resized_tensors) {
     for (auto producer : ir_utils::producerTvsOf(resized_tensor)) {
