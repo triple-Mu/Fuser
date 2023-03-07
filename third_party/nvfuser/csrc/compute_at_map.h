@@ -134,7 +134,9 @@ class TORCH_CUDA_CU_API IterDomainGraph {
   DisjointSets<IterDomain*> loop_nodes_;
   DisjointSets<IterDomain*> permissive_resize_nodes_;
 
-  // Consumers and producers is not symmetric like the other sets
+  // Consumers and producers is not symmetric like the other sets.
+  // Mapping is based on the most permissive map, i.e., the
+  // permissive-resize map.
   std::unordered_map<IterDomain*, VectorOfUniqueEntries<IterDomain*>>
       consumers_;
   std::unordered_map<IterDomain*, VectorOfUniqueEntries<IterDomain*>>

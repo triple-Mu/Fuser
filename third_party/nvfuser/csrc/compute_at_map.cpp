@@ -510,16 +510,12 @@ void IterDomainGraph::build(Fusion* fusion) {
             for (auto j : c10::irange(i + 1, vec.size())) {
               auto id2 = vec[j];
               if (p_ids.count(id1) && c_ids.count(id2)) {
-                consumers_.at(id1).pushBack(id2);
-                producers_.at(id2).pushBack(id1);
                 if (idIsAComputeAtLeafDomain(id1, p_tv, c_tv) &&
                     idIsALeafDomain(id2, c_tv)) {
                   loop_nodes_.mapEntries(id1, id2);
                 }
               }
               if (c_ids.count(id1) && p_ids.count(id2)) {
-                producers_.at(id1).pushBack(id2);
-                consumers_.at(id2).pushBack(id1);
                 if (idIsAComputeAtLeafDomain(id2, p_tv, c_tv) &&
                     idIsALeafDomain(id1, c_tv)) {
                   loop_nodes_.mapEntries(id1, id2);
@@ -530,13 +526,27 @@ void IterDomainGraph::build(Fusion* fusion) {
         }
 
         // Mostly the same as the above for the permissive map but
-        // nothing to do for the loop map
+        // nothing to do for the loop map.
+        // The producer and consumer maps are based on the most
+        // permissive mappings, so they are set using the
+        // permissive-resize mappings.
         for (auto& dset : permissive_resize_disjoint_sets.disjointSets()) {
           auto& vec = dset->vector();
           for (auto i : c10::irange(vec.size())) {
             auto id1 = vec[i];
             permissive_resize_nodes_.mapEntries(id1, vec[0]);
             mapMaybeSwizzleOp(permissive_resize_nodes_, id1);
+            for (auto j : c10::irange(i + 1, vec.size())) {
+              auto id2 = vec[j];
+              if (p_ids.count(id1) && c_ids.count(id2)) {
+                consumers_.at(id1).pushBack(id2);
+                producers_.at(id2).pushBack(id1);
+              }
+              if (c_ids.count(id1) && p_ids.count(id2)) {
+                producers_.at(id1).pushBack(id2);
+                consumers_.at(id2).pushBack(id1);
+              }
+            }
           }
         }
       }
