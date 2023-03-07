@@ -2135,12 +2135,12 @@ IterDomain* IterDomain::resize(
     Val* right_expansion,
     bool mark_as_rfactor) {
   TORCH_CHECK(
-      left_expansion->isScalar(),
-      "Expansion factor must be a scalar: ",
+      left_expansion->isIntegralScalar(),
+      "Expansion factor must be an integer scalar: ",
       left_expansion->toString());
   TORCH_CHECK(
-      right_expansion->isScalar(),
-      "Expansion factor must be a scalar: ",
+      right_expansion->isIntegralScalar(),
+      "Expansion factor must be an integer scalar: ",
       right_expansion->toString());
 
   // Only Inteation is considered for now.
@@ -2980,8 +2980,8 @@ std::string Resize::toString(int indent_size) const {
   std::stringstream ss;
   ss << "Resize: ";
   ss << in()->toString();
-  ss << " by " << leftExpand()->toString() << " and "
-     << rightExpand()->toString();
+  ss << " by " << leftExpand()->toInlineString() << " and "
+     << rightExpand()->toInlineString();
   ss << " -> ";
   ss << out()->toString();
   ss << "\n";
@@ -3119,13 +3119,7 @@ std::vector<int> PadOp::getPaddedAxes() const {
 }
 
 std::vector<Val*> PadOp::getPadWidths() const {
-  std::vector<Val*> pad_widths;
-  std::transform(
-      getPadWidthInputBegin(),
-      getPadWidthInputEnd(),
-      std::back_inserter(pad_widths),
-      [](Statement* attr) { return attr->as<Val>(); });
-  return pad_widths;
+  return {getPadWidthInputBegin(), getPadWidthInputEnd()};
 }
 
 std::pair<Val*, Val*> PadOp::getPadWidths(int axis) const {
@@ -3198,9 +3192,9 @@ std::vector<Slice> SliceOp::getRanges() const {
   std::vector<Slice> ranges(ndims);
   for (const auto i : c10::irange(ndims)) {
     ranges.at(i) = Slice{
-        .start = input(input_offset + i * 3)->as<Val>(),
-        .stop = input(input_offset + i * 3 + 1)->as<Val>(),
-        .step = input(input_offset + i * 3 + 2)->as<Val>()};
+        .start = input(input_offset + i * 3),
+        .stop = input(input_offset + i * 3 + 1),
+        .step = input(input_offset + i * 3 + 2)};
   }
   return ranges;
 }
