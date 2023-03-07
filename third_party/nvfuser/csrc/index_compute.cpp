@@ -575,17 +575,17 @@ void IndexCompute::handle(Resize* resize) {
 
   const auto out_ind = out_it->second;
 
-  auto zero = GpuLower::current()->kernel()->zeroVal();
-
-  if (isZero(out_id)) {
-    index_map_[in_id] = zero;
-    extent_map_[in_id] = zero;
-    zero_domains_.emplace(in_id);
+  if (isZero(out_id) || hasZeroMerged(out_id)) {
+    // When the out ID is (partially) zero, the in ID is not indexable. Don't
+    // add any new mapping to the index and extent maps. This is fine since when
+    // a resize shows up as part of rfactor transformations, the input to the
+    // resize is not indexed as the indexing is done using the rfactor root
+    // domain. This could be an issue when a resize is shows up outside of
+    // rfactor transfomations, but currently that only can happen when a
+    // producer tensor is transformed to look like a consumer. Since inlining is
+    // not allowed with resize, the out ID should never be a zero domain in that
+    // case.
     return;
-  } else if (hasZeroMerged(out_id)) {
-    zero_merged_in_.emplace(in_id);
-    index_map_[in_id] = out_ind;
-    extent_map_[in_id] = getExtent(out_id);
   } else {
     index_map_[in_id] = sub(out_ind, resize->leftExpand());
     extent_map_[in_id] = sub(
