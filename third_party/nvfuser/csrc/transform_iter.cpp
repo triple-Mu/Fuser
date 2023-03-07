@@ -32,7 +32,7 @@ void ReplayTransformations::handle(Split* s) {
     }
   }
 
-  auto mapped = (*it).second;
+  auto mapped = it->second;
   // Make sure this ID is a leaf ID (meaning it has no uses we generated)
   TORCH_INTERNAL_ASSERT(
       leaf_ids_.find(mapped) != leaf_ids_.end(),
@@ -143,8 +143,8 @@ void ReplayTransformations::handle(Swizzle2D* swizzle_2d) {
     }
   }
 
-  auto mapped_x = (*it_x).second;
-  auto mapped_y = (*it_y).second;
+  auto mapped_x = it_x->second;
+  auto mapped_y = it_y->second;
 
   // Make sure this ID is a leaf ID (meaning it has no uses we generated)
   TORCH_INTERNAL_ASSERT(
@@ -185,7 +185,7 @@ void ReplayTransformations::handle(Resize* exp) {
     }
   }
 
-  auto mapped = (*it).second;
+  auto mapped = it->second;
   // Make sure this ID is a leaf ID (meaning it has no uses we generated)
   TORCH_INTERNAL_ASSERT(
       leaf_ids_.find(mapped) != leaf_ids_.end(),
@@ -268,7 +268,7 @@ void ReplayTransformations::runReplay() {
       continue;
     }
 
-    auto id_replayed = (*it_replayed).second;
+    auto id_replayed = it_replayed->second;
     auto it_leaf = leaf_ids_.find(id_replayed);
     TORCH_INTERNAL_ASSERT(
         it_leaf != leaf_ids_.end(),
