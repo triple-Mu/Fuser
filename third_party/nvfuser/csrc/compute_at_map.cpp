@@ -443,12 +443,19 @@ void IterDomainGraph::build(Fusion* fusion) {
         // Look for matching ID transformations in producer and consumer, replay
         // producer as consumer. We use the symmetric API of BestEffortReplay so
         // that both broadcast and squeeze are handled correctly.
+        //
+        // Note on the boolean flags: swizzles are skipped in both
+        // producer and consumer but resizes are not.
         const auto permissive_disjoint_sets =
             BestEffortReplay::replayPasC(
                 p_tv, c_tv, -1, pairwise_map, true, true, false)
                 .getIterDomainEquivalence();
 
-        // Permissive-Resize map allows mappings of resize inputs and outputs
+        // Permissive-Resize map allows mappings of resize inputs and
+        // outputs
+        //
+        // Note on the boolean flags: swizzles and resizes are skipped
+        // in the permissive-resize map
         const auto permissive_resize_disjoint_sets =
             BestEffortReplay::replayPasC(
                 p_tv, c_tv, -1, pairwise_map, true, true, true)
