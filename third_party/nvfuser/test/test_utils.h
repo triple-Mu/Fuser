@@ -53,10 +53,17 @@ inline TensorView* makeConcreteTensor(
 inline TensorView* makeContigConcreteTensor(
     std::vector<int64_t> shape,
     DataType dtype = DataType::Float) {
+  std::vector<bool> contiguity;
+  for (auto s : shape) {
+    if (s == 1) {
+      continue;
+    }
+    contiguity.push_back(true);
+  }
   return TensorViewBuilder()
       .shape(shape)
       .dtype(dtype)
-      .contiguity(std::vector<bool>(shape.size(), true))
+      .contiguity(contiguity)
       .build();
 }
 

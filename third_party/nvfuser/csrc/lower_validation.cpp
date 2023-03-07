@@ -165,24 +165,6 @@ void validateIterDomainUsage(Fusion* fusion) {
   }
 }
 
-// Check that an expanded dimension and the dimension before can never be
-// contiguous. See note [Contiguity and expand] for explanation.
-void checkContiguityForExpandedDims(TensorView* tv) {
-  auto root_dom = tv->getMaybeRFactorDomain();
-  for (const auto idx : c10::irange(root_dom.size())) {
-    bool is_contiguous = tv->domain()->contiguity()[idx];
-    if (is_contiguous) {
-      TORCH_CHECK(
-          !root_dom[idx]->hasExpandedExtent() &&
-              (idx == root_dom.size() - 1 ||
-               !root_dom[idx + 1]->hasExpandedExtent()),
-          "Validation failed on tensor ",
-          tv,
-          ". The expanded dim and the dim before it can not be contiguous.");
-    }
-  }
-}
-
 } // namespace
 
 void validateIr(Fusion* fusion) {
@@ -196,11 +178,6 @@ void validateIr(Fusion* fusion) {
   ValidateSiblings::validate(fusion);
 
   validateIterDomainUsage(fusion);
-
-  // check that the contiguity of tv is compatible with expand
-  for (auto tv : ir_utils::allTvs(fusion)) {
-    checkContiguityForExpandedDims(tv);
-  }
 }
 
 namespace {
@@ -212,6 +189,7 @@ void checkContiguity(
     TensorView* tv) {
   TORCH_INTERNAL_ASSERT(tv->getMemoryType() == MemoryType::Global);
 
+  int no_broadcast_i = 0;
   for (const auto idx : c10::irange(tv->getRootDomain().size())) {
     auto root = tv->getRootDomain()[idx];
     if (domains.find(root) != domains.end()) {
@@ -221,10 +199,13 @@ void checkContiguity(
           "Issue found in, ",
           tv);
       TORCH_INTERNAL_ASSERT(
-          tv->domain()->contiguity()[idx],
+          tv->domain()->contiguity().at(no_broadcast_i),
           "Cannot merge non-contiguous root domains with misaligned vectorization.",
           "Issue found in, ",
           tv);
+    }
+    if (!root->isBroadcast()) {
+      no_broadcast_i++;
     }
   }
 }
@@ -246,10 +227,14 @@ void checkContiguity(
           .mapConsumerToProducer(consumer->domain(), producer->domain());
 
   std::unordered_map<IterDomain*, bool> producer_domain_contiguity;
+  int no_broadcast_i = 0;
   for (const auto idx : c10::irange(producer->getMaybeRFactorDomain().size())) {
     auto root = producer->getMaybeRFactorDomain()[idx];
-    auto contiguity = producer->domain()->contiguity()[idx];
+    auto contiguity = producer->domain()->contiguity().at(no_broadcast_i);
     producer_domain_contiguity.insert({root, contiguity});
+    if (!root->isBroadcast()) {
+      no_broadcast_i++;
+    }
   }
 
   for (auto consumer_root : consumer->getMaybeRFactorDomain()) {
@@ -328,8 +313,14 @@ class VectorizeValidator : public OptInDispatch {
 
     std::vector<bool> producer_contiguity;
 
+    auto producer_full2nob =
+        ir_utils::fullToNoBroadcastMap(producer_tv->getMaybeRFactorDomain());
+
     for (auto consumer_root_id : consumer_tv->getRootDomain()) {
       auto producer_root_id = c2p.at(consumer_root_id);
+      if (producer_root_id->isBroadcast()) {
+        continue;
+      }
       auto producer_root_it = std::find(
           producer_tv->getMaybeRFactorDomain().begin(),
           producer_tv->getMaybeRFactorDomain().end(),
@@ -338,8 +329,8 @@ class VectorizeValidator : public OptInDispatch {
           producer_root_it != producer_tv->getMaybeRFactorDomain().end());
       auto producer_root_id_offset = std::distance(
           producer_tv->getMaybeRFactorDomain().begin(), producer_root_it);
-      producer_contiguity.push_back(
-          producer_tv->domain()->contiguity().at(producer_root_id_offset));
+      producer_contiguity.push_back(producer_tv->domain()->contiguity().at(
+          producer_full2nob.at(producer_root_id_offset)));
     }
 
     return producer_contiguity;
@@ -434,14 +425,12 @@ class VectorizeValidator : public OptInDispatch {
 
     // Contiguity is based on rfactor domain.
     IterDomain* last_root_dim = nullptr;
-    int last_root_dim_pos = -1;
     for (size_t i = tv->getMaybeRFactorDomain().size(); i > 0; i--) {
       auto r_id = tv->getMaybeRFactorDomain()[i - 1];
       if (r_id->isReduction() || r_id->isBroadcast()) {
         continue;
       }
       last_root_dim = r_id;
-      last_root_dim_pos = (int)i - 1;
       break;
     }
 
@@ -453,7 +442,7 @@ class VectorizeValidator : public OptInDispatch {
 
     TORCH_CHECK(
         last_root_dim == validator.vectorized_id_ &&
-            tv->domain()->contiguity()[last_root_dim_pos],
+            tv->domain()->contiguity().back(),
         "Vectorized dim has to be from a contiguous inner most position: ",
         tv,
         "\n");

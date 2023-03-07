@@ -4089,7 +4089,7 @@ TEST_F(NVFuserTest, FusionReproNoncontigBroadcast_CUDA) {
                  .build();
   auto tv1 = TensorViewBuilder()
                  .ndims(4)
-                 .contiguity({true, false, false, true}) // tfft
+                 .contiguity({true, true})
                  .shape({-1, 1, 1, -1})
                  .dtype(DataType::Half)
                  .build();
@@ -4702,7 +4702,7 @@ TEST_F(NVFuserTest, FusionExpandRepro1860_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   Fusion& fusion = *fusion_ptr;
   FusionGuard fg(&fusion);
-  std::vector<bool> contiguity{false, false, false};
+  std::vector<bool> contiguity{};
 
   std::vector<int64_t> shape{1, -1, -1};
   TensorView* tv0 = makeContigConcreteTensor(shape);
@@ -4861,7 +4861,7 @@ TEST_F(NVFuserTest, FusionExpandBadShapeTest_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   Fusion& fusion = *fusion_ptr;
   FusionGuard fg(&fusion);
-  std::vector<bool> contiguity{false, false};
+  std::vector<bool> contiguity{false};
 
   auto tv0 = makeSymbolicTensor(2);
   fusion.addInput(tv0);
@@ -5998,7 +5998,7 @@ TEST_F(NVFuserTest, FusionExpandedInput_CUDA) {
   TensorView* tv0 = TensorViewBuilder()
                         .ndims(3)
                         .shape({-1, -1, -1})
-                        .contiguity({false, false, true})
+                        .contiguity({false, true})
                         .expanded({false, true, false})
                         .build();
   fusion->addInput(tv0);
@@ -6012,28 +6012,6 @@ TEST_F(NVFuserTest, FusionExpandedInput_CUDA) {
   auto cg_outputs = fec.runFusionWithInputs({t0});
 
   testValidate(fusion, cg_outputs, {t0}, {t0}, __LINE__, __FILE__);
-}
-
-TEST_F(NVFuserTest, FusionExpandedInputThrow_CUDA) {
-  std::unique_ptr<Fusion> fusion_ptr = std::make_unique<Fusion>();
-  auto fusion = fusion_ptr.get();
-  FusionGuard fg(fusion);
-
-  TensorView* tv0 = TensorViewBuilder()
-                        .ndims(3)
-                        .shape({3, 7, 3})
-                        .contiguity({false, false, true})
-                        .expanded({false, true, false})
-                        .build();
-  fusion->addInput(tv0);
-  auto tv1 = set(tv0);
-  tv1->domain()->setContiguity({true, true, true});
-  fusion->addOutput(tv1);
-
-  EXPECT_THAT(
-      [&]() { GpuLower lower(fusion); },
-      ::testing::ThrowsMessage<c10::Error>(::testing::HasSubstr(
-          "The expanded dim and the dim before it can not be contiguous.")));
 }
 
 // Repro for

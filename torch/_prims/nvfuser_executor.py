@@ -71,7 +71,7 @@ def compute_contiguity(shape, strides):
     """
     from nvfuser import compute_contiguity
 
-    return compute_contiguity(shape, strides)
+    return tuple(compute_contiguity(shape, strides))
 
 
 def to_nvfuser_template_args(args):

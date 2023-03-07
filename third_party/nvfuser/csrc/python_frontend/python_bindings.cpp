@@ -19,6 +19,44 @@
 
 namespace nvfuser::python_frontend {
 
+std::vector<bool> computeContiguity(
+    const std::vector<int64_t>& sizes,
+    const std::vector<int64_t>& strides) {
+  TORCH_CHECK(
+      sizes.size() == strides.size(),
+      "compute_contiguity: Sizes and strides must have the same number of dimensions");
+  auto not_broadcast = [&](auto i) { return strides[i] != 0 && sizes[i] != 1; };
+  auto irange = c10::irange(sizes.size());
+  auto no_b_size = std::count_if(irange.begin(), irange.end(), not_broadcast);
+  std::vector<bool> contiguity(no_b_size);
+  if (contiguity.size() == 0) {
+    return contiguity;
+  }
+  int64_t last = sizes.size() - 1;
+  for (; last >= 0; --last) {
+    if (not_broadcast(last)) {
+      break;
+    }
+  }
+  contiguity[no_b_size - 1] = (strides.at(last) == 1);
+  int64_t no_broadcast_i = 0;
+  for (int64_t i = 0; i < last;) {
+    if (not_broadcast(i)) {
+      auto l = i++;
+      for (; i <= last; i++) {
+        if (not_broadcast(i)) {
+          break;
+        }
+      }
+      contiguity[no_broadcast_i] = (strides[l] == strides[i] * sizes[i]);
+      no_broadcast_i++;
+    } else {
+      i++;
+    }
+  }
+  return contiguity;
+}
+
 void initNvFuserPythonBindings(PyObject* module) {
   auto nvfuser = py::handle(module).cast<py::module>();
 
@@ -35,23 +73,7 @@ void initNvFuserPythonBindings(PyObject* module) {
       .value("ComplexDouble", DataType::ComplexDouble)
       .value("Null", DataType::Null);
 
-  nvfuser.def(
-      "compute_contiguity",
-      [](const std::vector<int64_t>& sizes,
-         const std::vector<int64_t>& strides) {
-        py::tuple contiguity(sizes.size());
-        TORCH_CHECK(
-            sizes.size() == strides.size(),
-            "compute_contiguity: Sizes and strides must have the same number of dimensions");
-        if (sizes.size() == 0) {
-          return contiguity;
-        }
-        contiguity[sizes.size() - 1] = strides.back() == 1;
-        for (int64_t i = static_cast<int64_t>(sizes.size()) - 2; i >= 0; --i) {
-          contiguity[i] = strides[i] == strides[i + 1] * sizes[i + 1];
-        }
-        return contiguity;
-      });
+  nvfuser.def("compute_contiguity", computeContiguity);
 
   //! Binding the FusionCache that holds a cache of Fusions
   //! This is only bound to provide an interface to get the number of fusions
@@ -284,21 +306,11 @@ void initNvFuserPythonBindings(PyObject* module) {
               }
             }
 
-            std::vector<bool> contig_info(strides.size(), false);
-            for (int i = contig_info.size() - 1; i >= 0; --i) {
-              if (i == static_cast<int>(contig_info.size() - 1)) {
-                contig_info[i] = (strides[i] == 1);
-              } else {
-                contig_info[i] =
-                    (strides[i] == (strides[i + 1] * sizes[i + 1]));
-              }
-            }
-
             Tensor out = self.defineTensor(sizes.size());
             self.defineRecord(new TensorRecord(
                 {self.recordingState(out())},
                 std::move(maybe_symbolic_sizes),
-                std::move(contig_info),
+                computeContiguity(sizes, strides),
                 dtype,
                 is_cpu));
 

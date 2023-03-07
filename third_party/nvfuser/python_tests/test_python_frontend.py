@@ -14,7 +14,7 @@ import torch._prims as prims
 
 # Will only create the nvfuser module if CUDA is available
 try:
-    from nvfuser import FusionCache, FusionDefinition, DataType, version
+    from nvfuser import FusionCache, FusionDefinition, DataType, version, compute_contiguity
     from nvfuser.pytorch_utils import torch_dtype_to_nvfuser_dtype
 except ImportError:
     pass
@@ -647,10 +647,10 @@ class TestNvFuserFrontend(TestCase):
                 symbolic_sizes=[-1, -1, -1], contiguous=[True, True, True]
             )
             t1 = fd.define_tensor(
-                symbolic_sizes=[-1, 1, -1], contiguous=[True, True, True]
+                symbolic_sizes=[-1, 1, -1], contiguous=[True, True]
             )
             t2 = fd.define_tensor(
-                symbolic_sizes=[-1, 1, -1], contiguous=[True, True, True]
+                symbolic_sizes=[-1, 1, -1], contiguous=[True, True]
             )
             t0_sizes = fd.ops.tensor_sizes(t0)
 
@@ -1321,6 +1321,15 @@ class TestNvFuserFrontend(TestCase):
         torch_out = torch.addcmul(*inputs, value=0.1)
 
         self.assertEqual(nvfout[0], torch_out)
+
+    def test_compute_contiguity(self):
+        sizes = [2, 1, 3, 1, 4, 5, 6]
+        strides = [80, 30, 30, 456456465465, 0, 6, 1]
+        contiguity = [False, True, True, True]
+        self.assertEqual(compute_contiguity(sizes, strides), contiguity)
+        strides = [800, 300, 300, 456456465465, 0, 60, 10]
+        contiguity = [False, True, True, False]
+        self.assertEqual(compute_contiguity(sizes, strides), contiguity)
 
     def test_prod(self) :
         inputs = [
