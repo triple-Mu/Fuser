@@ -1974,8 +1974,8 @@ struct RandomOpRecord : RecordFunctor {
   }
 
   void operator()(FusionState& fd) final {
-    auto arg1 = fd.getFusionState(args_.at(0).index)->template as<Val>();
-    auto arg2 = fd.getFusionState(args_.at(1).index)->template as<Val>();
+    auto arg1 = fd.getFusionState(args_.at(0).index);
+    auto arg2 = fd.getFusionState(args_.at(1).index);
 
     std::vector<Val*> output_shape(output_shape_.size(), nullptr);
     std::transform(
