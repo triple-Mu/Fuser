@@ -319,18 +319,23 @@ bool UnrollPass::canOmitElseClause(kir::ForLoop* fl) {
   // include the predicates for both sizes, which means the larger
   // tensors would still need the else clause.
   if (!resize_exprs.empty()) {
-    std::vector<Val*> resize_expr_inputs;
+    std::unordered_set<Val*> resize_expr_inputs;
     std::transform(
         resize_exprs.begin(),
         resize_exprs.end(),
-        std::back_inserter(resize_expr_inputs),
+        std::inserter(resize_expr_inputs, resize_expr_inputs.begin()),
         [](Expr* resize_expr) { return resize_expr->input(0); });
-    auto dep_exprs = DependencyCheck::getAllExprsBetween(
-        {fl->fusion()->inputs().begin(), fl->fusion()->inputs().end()},
-        resize_expr_inputs);
-    if (std::any_of(dep_exprs.begin(), dep_exprs.end(), [&](auto dep_expr) {
-          return all_exprs_inside_loop_nest.count(dep_expr);
-        })) {
+    if (std::any_of(
+            all_exprs_inside_loop_nest.begin(),
+            all_exprs_inside_loop_nest.end(),
+            [&](Expr* loop_expr) {
+              return std::any_of(
+                  loop_expr->outputs().begin(),
+                  loop_expr->outputs().end(),
+                  [&](Val* expr_output) {
+                    return resize_expr_inputs.count(expr_output);
+                  });
+            })) {
       return false;
     }
   }
