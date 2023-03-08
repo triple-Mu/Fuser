@@ -3086,14 +3086,17 @@ PadOp::PadOp(
   TORCH_INTERNAL_ASSERT(
       pad_widths.size() % 2 == 0,
       "Invalid size of padding width vector: ",
-      pad_widths.size());
+      pad_widths.size(),
+      ". Number of width vals must be even.");
   TORCH_INTERNAL_ASSERT(
-      pad_widths.size() <= ndims * 2,
+      pad_widths.size() == ndims * 2,
       "Invalid size of padding width vector: ",
-      pad_widths.size());
+      pad_widths.size(),
+      ". All dimensions, padded or not, must have width vals. Use zero for non non-padded dimensions.");
   addOutput(out);
   addInput(inp);
   for (auto width : pad_widths) {
+    TORCH_CHECK(width != nullptr, "Padding width must not be nullptr");
     addInput(width);
   }
 }
@@ -3113,21 +3116,17 @@ std::string PadOp::toInlineString(int indent_size) const {
   TORCH_CHECK(false, "Tensor op can not be printed inline");
 }
 
-int PadOp::getNumPaddedAxes() const {
-  int num_pad_inputs =
-      std::distance(getPadWidthInputBegin(), getPadWidthInputEnd());
-  TORCH_INTERNAL_ASSERT(
-      num_pad_inputs % 2 == 0,
-      "Invalid number of padding width inputs: ",
-      num_pad_inputs);
-  return num_pad_inputs / 2;
-}
-
 std::vector<int> PadOp::getPaddedAxes() const {
   auto num_dims = out()->as<TensorView>()->getRootDomain().size();
-  auto num_padded_axes = getNumPaddedAxes();
-  std::vector<int> padded_axes(num_padded_axes);
-  std::iota(padded_axes.begin(), padded_axes.end(), num_dims - num_padded_axes);
+  std::vector<int> padded_axes;
+  for (const auto i : c10::irange(num_dims)) {
+    auto [left_pad, right_pad] = getPadWidths(i);
+    // Filter out non-padded dimension
+    if (left_pad->isZeroInt() && right_pad->isZeroInt()) {
+      continue;
+    }
+    padded_axes.push_back(i);
+  }
   return padded_axes;
 }
 
@@ -3136,8 +3135,8 @@ std::vector<Val*> PadOp::getPadWidths() const {
 }
 
 std::pair<Val*, Val*> PadOp::getPadWidths(int axis) const {
-  auto num_dims = static_cast<int>(out()->as<TensorView>()->nDims());
-  auto num_padded_axes = getNumPaddedAxes();
+  const auto num_dims =
+      static_cast<int>(out()->as<TensorView>()->getRootDomain().size());
 
   if (axis < 0) {
     axis += num_dims;
@@ -3145,17 +3144,9 @@ std::pair<Val*, Val*> PadOp::getPadWidths(int axis) const {
 
   TORCH_CHECK(axis >= 0 && axis < num_dims, "Invalid axis: ", axis);
 
-  // Just return zero for non padded domains
-  if (axis < num_dims - num_padded_axes) {
-    return std::make_pair(container()->zeroVal(), container()->zeroVal());
-  }
-
-  auto pad_idx = axis - (num_dims - num_padded_axes);
-  TORCH_INTERNAL_ASSERT(pad_idx >= 0 && pad_idx < num_dims);
-
   return std::make_pair(
-      (*(getPadWidthInputBegin() + pad_idx * 2))->as<Val>(),
-      (*(getPadWidthInputBegin() + pad_idx * 2 + 1))->as<Val>());
+      (*(getPadWidthInputBegin() + axis * 2))->as<Val>(),
+      (*(getPadWidthInputBegin() + axis * 2 + 1))->as<Val>());
 }
 
 SliceOp::SliceOp(

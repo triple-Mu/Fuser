@@ -2243,7 +2243,10 @@ class TORCH_CUDA_CU_API PadOp : public Expr {
   using Expr::Expr;
 
   //! Pad a tensor as specified by a vector of integer scalars. For
-  //! the actual semantics, see the torch.pad documentation
+  //! the actual semantics, see the torch.pad documentation. Note that
+  //! unlike torch.pad, the pad_widths vector parameter must contain
+  //! width vals for all dimensions. For non-padded dimensions, width
+  //! vals should be integer zero.
   PadOp(
       IrBuilderPasskey passkey,
       TensorView* out,
@@ -2267,13 +2270,16 @@ class TORCH_CUDA_CU_API PadOp : public Expr {
     return input(0);
   }
 
+  //! Return axes that are actually paded, i.e., those that have
+  //! non-zero pad widths
   std::vector<int> getPaddedAxes() const;
 
-  //! Return all pad widths
-  std::vector<Val*> getPadWidths() const;
-
-  //! Return pad widths of the given axis
+  //! Return pad widths of the given axis, which are just zero for non padded
+  //! dimensions
   std::pair<Val*, Val*> getPadWidths(int axis) const;
+
+  //! Return the pad widths of all dimensions, including non-padded ones
+  std::vector<Val*> getPadWidths() const;
 
  private:
   //! Offset of pad_width inputs in the input vector
@@ -2290,8 +2296,6 @@ class TORCH_CUDA_CU_API PadOp : public Expr {
   auto getPadWidthInputEnd() const {
     return inputs().cend();
   }
-
-  int getNumPaddedAxes() const;
 };
 
 // Similar to at::indexing::Slice

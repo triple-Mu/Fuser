@@ -438,7 +438,7 @@ TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
           TensorDomain::getContiguousContiguity(rfactor_ids)),
       *inp->getDataType());
 
-  IrBuilder::create<PadOp>(out, inp, pad_widths);
+  IrBuilder::create<PadOp>(out, inp, normalized_pad_widths);
 
   return out;
 }
