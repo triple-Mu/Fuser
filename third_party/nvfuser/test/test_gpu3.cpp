@@ -7750,6 +7750,62 @@ TEST_F(NVFuserTest, FusionPredicateReductionInitGlobal_CUDA) {
       fe.kernel(), cg_outputs, inputs, {ref_t1, ref_t3}, __LINE__, __FILE__);
 }
 
+TEST_F(NVFuserTest, FusionExecutorCache_IndexType_Recompilation) {
+  auto fusion = std::make_unique<Fusion>();
+  FusionGuard fg(fusion.get());
+
+  auto tv0 = makeContigTensor(2, DataType::Half);
+  auto tv1 = makeContigTensor(2, DataType::Half);
+  auto tv2 = add(tv0, tv1);
+  fusion->addInput(tv0);
+  fusion->addInput(tv1);
+  fusion->addOutput(tv2);
+
+  auto fec = std::make_unique<FusionExecutorCache>(std::move(fusion));
+
+  auto options = at::TensorOptions().dtype(at::kHalf).device(at::kCUDA, 0);
+  auto input_small = at::ones({1024, 1024}, options);
+  auto input_large = at::ones({1024, 4 * 1 << 20}, options);
+
+  KernelArgumentHolder small_holder =
+      KernelArgumentHolder::createKernelArgumentHolder({input_small});
+  TORCH_CHECK(
+      small_holder.getIndexMode() ==
+      KernelIndexMode::INT32); // Index mode should be INT32
+
+  small_holder.setIndexMode(
+      KernelIndexMode::INT64); // Index mode should go up in size.
+  TORCH_CHECK(small_holder.getIndexMode() == KernelIndexMode::INT64);
+
+  small_holder.push(input_large);
+  small_holder.setIndexMode(KernelIndexMode::INT32);
+  TORCH_CHECK(
+      small_holder.getIndexMode() ==
+      KernelIndexMode::INT64); // Index mode shouldn't be changed.
+
+  // first run with the smaller input
+  fec->runFusionWithInputs({input_small, input_small});
+  auto kernel_runtime_for_input_small = fec->getMostRecentKernelRuntime();
+
+  // run with the larger input
+  fec->runFusionWithInputs({input_large, input_large});
+  auto kernel_runtime_for_input_large = fec->getMostRecentKernelRuntime();
+
+  // make sure they correspond to different runtimes, just in case
+  TORCH_CHECK(
+      kernel_runtime_for_input_small != kernel_runtime_for_input_large,
+      "Unexpected kernel runtime");
+
+  // second run with the smaller input
+  fec->runFusionWithInputs({input_small, input_small});
+  auto second_kernel_runtime_for_input_small =
+      fec->getMostRecentKernelRuntime();
+
+  TORCH_CHECK(
+      kernel_runtime_for_input_small == second_kernel_runtime_for_input_small,
+      "Expected to reuse the same runtime");
+}
+
 // Test file size should be up to 10K LoC. Create a new file for more tests.
 
 } // namespace nvfuser

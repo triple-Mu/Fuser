@@ -323,11 +323,11 @@ KernelIndexMode collectIndexMode(const at::ArrayRef<c10::IValue>& inputs) {
           if (tensor_input.stride(dim_i) > 0) {
             // Acuumulate positive stride
             tensor_most_positive_index +=
-                (tensor_input.size(dim_i) - 1) * tensor_input.stride(dim_i);
+                tensor_input.size(dim_i) * tensor_input.stride(dim_i);
           } else {
             // Acuumulate negative stride
             tensor_most_negative_index +=
-                (tensor_input.size(dim_i) - 1) * tensor_input.stride(dim_i);
+                tensor_input.size(dim_i) * tensor_input.stride(dim_i);
           }
         }
       }
