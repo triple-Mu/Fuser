@@ -410,6 +410,9 @@ TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
     normalized_pad_widths.push_back(right_pad);
   }
 
+  // Indicates if any dimension is actually padded. Can be false even
+  // when non-empty padding width vector is passed
+  bool is_padded_any = false;
   for (const auto idx : c10::irange(ndims)) {
     auto inp_root_id = inp_dom.at(idx);
     IterDomain* out_root_id = nullptr;
@@ -425,9 +428,15 @@ TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
           IterDomainBuilder(inp_root_id).is_rfactor_domain(true).build();
       // Expand the root domain and mark it as a rfactor domain
       out_rf_id = IterDomain::resize(out_root_id, left_pad, right_pad, true);
+      is_padded_any = true;
     }
     root_ids.at(idx) = out_root_id;
     rfactor_ids.at(idx) = out_rf_id;
+  }
+
+  // If all of the padding widths are just zero, this is just a set op.
+  if (!is_padded_any) {
+    return set(inp);
   }
 
   auto out = IrBuilder::create<TensorView>(
