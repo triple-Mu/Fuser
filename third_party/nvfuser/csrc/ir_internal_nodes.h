@@ -2329,6 +2329,22 @@ class TORCH_CUDA_CU_API SliceOp : public Expr {
   }
 
   std::vector<Slice> getRanges() const;
+
+ private:
+  //! Offset of ranges input in the input vector
+  int getRangeInputOffset() const {
+    return 1;
+  }
+
+  //! Iterator to the first range inputs
+  auto getRangeInputBegin() const {
+    return inputs().cbegin() + getRangeInputOffset();
+  }
+
+  //! Iterator to the end of the range inputs
+  auto getRangeInputEnd() const {
+    return inputs().cend();
+  }
 };
 
 class TORCH_CUDA_CU_API CatOp : public Expr {

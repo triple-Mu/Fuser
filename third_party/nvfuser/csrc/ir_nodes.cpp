@@ -2152,7 +2152,7 @@ IterDomain* IterDomain::resize(
 
   TORCH_CHECK(
       in->start()->isZeroInt(),
-      "Non-zero start not considered: ",
+      "Non-zero start not supported: ",
       in->toString());
   TORCH_CHECK(
       in->stopOffset()->isZeroInt(),
@@ -3081,6 +3081,16 @@ PadOp::PadOp(
     TensorView* inp,
     const std::vector<Val*>& pad_widths)
     : Expr(passkey) {
+  const auto ndims =
+      TensorDomain::noReductions(inp->getMaybeRFactorDomain()).size();
+  TORCH_INTERNAL_ASSERT(
+      pad_widths.size() % 2 == 0,
+      "Invalid size of padding width vector: ",
+      pad_widths.size());
+  TORCH_INTERNAL_ASSERT(
+      pad_widths.size() <= ndims * 2,
+      "Invalid size of padding width vector: ",
+      pad_widths.size());
   addOutput(out);
   addInput(inp);
   for (auto width : pad_widths) {
@@ -3106,7 +3116,10 @@ std::string PadOp::toInlineString(int indent_size) const {
 int PadOp::getNumPaddedAxes() const {
   int num_pad_inputs =
       std::distance(getPadWidthInputBegin(), getPadWidthInputEnd());
-  TORCH_INTERNAL_ASSERT(num_pad_inputs % 2 == 0);
+  TORCH_INTERNAL_ASSERT(
+      num_pad_inputs % 2 == 0,
+      "Invalid number of padding width inputs: ",
+      num_pad_inputs);
   return num_pad_inputs / 2;
 }
 
@@ -3151,12 +3164,21 @@ SliceOp::SliceOp(
     TensorView* inp,
     const std::vector<Slice>& ranges)
     : Expr(passkey) {
+  const auto ndims =
+      TensorDomain::noReductions(inp->getMaybeRFactorDomain()).size();
+  TORCH_INTERNAL_ASSERT(
+      ndims == ranges.size(),
+      "The range vector must have the same number of Slice descriptors. Given: ",
+      ranges.size(),
+      ", Expected: ",
+      ndims);
+
   addOutput(out);
   addInput(inp);
   for (const auto& range : ranges) {
-    TORCH_INTERNAL_ASSERT(range.start != nullptr);
-    TORCH_INTERNAL_ASSERT(range.stop != nullptr);
-    TORCH_INTERNAL_ASSERT(range.step != nullptr);
+    TORCH_INTERNAL_ASSERT(range.start != nullptr, "nullptr not allowed");
+    TORCH_INTERNAL_ASSERT(range.stop != nullptr, "nullptr not allowed");
+    TORCH_INTERNAL_ASSERT(range.step != nullptr, "nullptr not allowed");
     addInput(range.start);
     addInput(range.stop);
     addInput(range.step);
@@ -3186,15 +3208,21 @@ std::string SliceOp::toInlineString(int indent_size) const {
 }
 
 std::vector<Slice> SliceOp::getRanges() const {
-  const int input_offset = 1;
-  TORCH_INTERNAL_ASSERT((inputs().size() - input_offset) % 3 == 0);
-  auto ndims = (inputs().size() - input_offset) / 3;
+  const auto num_range_vals =
+      std::distance(getRangeInputBegin(), getRangeInputEnd());
+  TORCH_INTERNAL_ASSERT(
+      num_range_vals % 3 == 0,
+      "Unexpected number of range vals: ",
+      num_range_vals);
+  auto ndims = num_range_vals / 3;
   std::vector<Slice> ranges(ndims);
+  auto range_val_it = getRangeInputBegin();
   for (const auto i : c10::irange(ndims)) {
     ranges.at(i) = Slice{
-        .start = input(input_offset + i * 3),
-        .stop = input(input_offset + i * 3 + 1),
-        .step = input(input_offset + i * 3 + 2)};
+        .start = *range_val_it,
+        .stop = *(range_val_it + 1),
+        .step = *(range_val_it + 2)};
+    range_val_it += 3;
   }
   return ranges;
 }

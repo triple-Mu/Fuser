@@ -375,8 +375,7 @@ TensorView* transpose(TensorView* x) {
 // Padding widths are assumed to be non-negative. Currently there's no
 // validation.
 TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
-  const auto& inp_dom = inp->domain()->noReductions();
-
+  const auto inp_dom = TensorDomain::noReductions(inp->getMaybeRFactorDomain());
   const auto ndims = inp_dom.size();
 
   TORCH_CHECK(
@@ -412,7 +411,7 @@ TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
   }
 
   for (const auto idx : c10::irange(ndims)) {
-    auto inp_root_id = inp_dom[idx];
+    auto inp_root_id = inp_dom.at(idx);
     IterDomain* out_root_id = nullptr;
     IterDomain* out_rf_id = nullptr;
     auto left_pad = normalized_pad_widths.at(idx * 2);
@@ -569,7 +568,12 @@ TensorView* slice(TensorView* inp, const std::vector<Slice>& ranges) {
   const auto inp_dom = TensorDomain::noReductions(inp->getMaybeRFactorDomain());
   const int ndims = static_cast<int>(inp_dom.size());
 
-  TORCH_CHECK(ndims == static_cast<int>(ranges.size()));
+  TORCH_CHECK(
+      ndims == static_cast<int>(ranges.size()),
+      "The range vector must have the same number of Slice descriptors. Given: ",
+      ranges.size(),
+      ", Expected: ",
+      ndims);
 
   auto normalize_slice_range = [](Slice range, Val* extent) -> Slice {
     if (range.start == nullptr) {
