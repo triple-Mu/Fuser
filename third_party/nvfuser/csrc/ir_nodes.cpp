@@ -3283,8 +3283,9 @@ Val* CatOp::getConcatenatedDomainIndex() const {
   TORCH_INTERNAL_ASSERT(
       container()->isA<kir::Kernel>(),
       "Should only be used for Kernel container.");
-  TORCH_INTERNAL_ASSERT(attributes().size() > 0);
-  TORCH_INTERNAL_ASSERT(attribute(1) != nullptr);
+  TORCH_INTERNAL_ASSERT(attributes().size() > 0, "No attribute found");
+  TORCH_INTERNAL_ASSERT(
+      attribute(1) != nullptr, "nulllptr attribute is invalid");
   auto idx = attribute(1)->as<Val>();
   return idx;
 }
@@ -3293,10 +3294,22 @@ Bool* CatOp::getPred(int input_idx) const {
   TORCH_INTERNAL_ASSERT(
       container()->isA<kir::Kernel>(),
       "Should only be used for Kernel container.");
-  auto attr_idx = input_idx + 2;
-  TORCH_INTERNAL_ASSERT(attr_idx < static_cast<int>(attributes().size()));
+  const auto num_input_tensors = static_cast<int>(inputs().size());
+  TORCH_INTERNAL_ASSERT(
+      input_idx < num_input_tensors, "Invalid input index: ", input_idx);
+  const auto attr_idx = input_idx + 2;
+  TORCH_INTERNAL_ASSERT(
+      attr_idx < static_cast<int>(attributes().size()),
+      "Invalid attribute index: ",
+      attr_idx,
+      ", number of attributes: ",
+      attributes().size());
   auto attr = attribute(attr_idx);
-  TORCH_INTERNAL_ASSERT(attr != nullptr && attr->isA<Bool>());
+  TORCH_INTERNAL_ASSERT(attr != nullptr, "nullptr attribute is invalid");
+  TORCH_INTERNAL_ASSERT(
+      attr->isA<Bool>(),
+      "Attribute must be a Bool val: ",
+      attr->toInlineString());
   auto pred = attr->as<Bool>();
   return pred;
 }

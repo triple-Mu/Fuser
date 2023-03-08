@@ -2772,7 +2772,6 @@ class CudaKernelGenerator : private OptOutConstDispatch {
 
   void handle(const CatOp* cat) final {
     auto out = gen(cat->output(0));
-    auto cat_idx = gen(cat->getConcatenatedDomainIndex());
 
     // Generate code like:
     // if (consumer_idx < producer_0_extent) {
