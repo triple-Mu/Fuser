@@ -21,7 +21,6 @@ using id_map = std::unordered_map<IterDomain*, IterDomain*>;
 
 namespace {
 
-// TODO: support resize
 class ReplaySelf : public ReplayTransformations {
  private:
   // Took a good bit of this from ReplayTransformations::handle(Split...)
@@ -129,6 +128,42 @@ class ReplaySelf : public ReplayTransformations {
     leaf_ids_[merged_id] = newCounter();
 
     id_map_[m->out()] = merged_id;
+  }
+
+  void handle(Swizzle2D* swizzle) override {
+    TORCH_INTERNAL_ASSERT(
+        false, "Unexpected expr to self replay: ", swizzle->toString());
+  }
+
+  void handle(Resize* resize) override {
+    auto id_in = resize->in();
+
+    auto it = id_map_.find(id_in);
+    TORCH_INTERNAL_ASSERT(
+        it != id_map_.end(),
+        "Transform traversal failed, dependencies not met.");
+
+    auto mapped = it->second;
+
+    TORCH_INTERNAL_ASSERT(
+        leaf_ids_.find(mapped) != leaf_ids_.end(),
+        "Transform traversal failed, modified a node but it was not a leaf node.");
+
+    // When the original output is an rfactor, make the replayed
+    // output domain also an rfactor
+    const auto resize_out_rfactor = resize->out()->isRFactorProduct();
+
+    auto replayed_out = IterDomain::resize(
+        mapped,
+        resize->leftExpand(),
+        resize->rightExpand(),
+        resize_out_rfactor);
+
+    leaf_ids_.erase(mapped);
+
+    leaf_ids_[replayed_out] = newCounter();
+
+    id_map_[resize->out()] = replayed_out;
   }
 
  public:
