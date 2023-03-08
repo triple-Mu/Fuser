@@ -1748,22 +1748,20 @@ TEST_F(NVFuserTest, FusionIndexHoist3_CUDA) {
 
   const std::string expected_kernel = R"(
 __global__ void CUDAGeneratedKernel(Tensor<float, 2> T0, Tensor<float, 2> T2) {
-  int64_t i36;
-  i36 = ((nvfuser_index_t)blockIdx.x) * 256;
   int64_t i37;
-  i37 = i36 + ((nvfuser_index_t)threadIdx.x);
+  i37 = (((nvfuser_index_t)blockIdx.x) * 256) + ((nvfuser_index_t)threadIdx.x);
   int64_t i7;
   i7 = T0.size[0] * T0.size[1];
-  bool b80;
-  b80 = ((nvfuser_index_t)threadIdx.x) < (i7 - i36);
+  bool b68;
+  b68 = i37 < i7;
   float f8;
   f8 = (float)(i7);
   float T1[1];
-  if (b80) {
+  if (b68) {
     T1[0]
        = sinf(T0[i37]);
   }
-  if (b80) {
+  if (b68) {
     T2[i37]
       = T1[0]
       + f8;
@@ -4093,7 +4091,7 @@ TEST_F(NVFuserTest, FusionReproNoncontigBroadcast_CUDA) {
                  .build();
   auto tv1 = TensorViewBuilder()
                  .ndims(4)
-                 .contiguity({true, false, false, true}) // tfft
+                 .contiguity({true, true})
                  .shape({-1, 1, 1, -1})
                  .dtype(DataType::Half)
                  .build();
@@ -4706,7 +4704,7 @@ TEST_F(NVFuserTest, FusionExpandRepro1860_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   Fusion& fusion = *fusion_ptr;
   FusionGuard fg(&fusion);
-  std::vector<bool> contiguity{false, false, false};
+  std::vector<bool> contiguity{};
 
   std::vector<int64_t> shape{1, -1, -1};
   TensorView* tv0 = makeContigConcreteTensor(shape);
@@ -4865,7 +4863,7 @@ TEST_F(NVFuserTest, FusionExpandBadShapeTest_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   Fusion& fusion = *fusion_ptr;
   FusionGuard fg(&fusion);
-  std::vector<bool> contiguity{false, false};
+  std::vector<bool> contiguity{false};
 
   auto tv0 = makeSymbolicTensor(2);
   fusion.addInput(tv0);
@@ -6002,7 +6000,7 @@ TEST_F(NVFuserTest, FusionExpandedInput_CUDA) {
   TensorView* tv0 = TensorViewBuilder()
                         .ndims(3)
                         .shape({-1, -1, -1})
-                        .contiguity({false, false, true})
+                        .contiguity({false, true})
                         .expanded({false, true, false})
                         .build();
   fusion->addInput(tv0);
@@ -6016,28 +6014,6 @@ TEST_F(NVFuserTest, FusionExpandedInput_CUDA) {
   auto cg_outputs = fec.runFusionWithInputs({t0});
 
   testValidate(fusion, cg_outputs, {t0}, {t0}, __LINE__, __FILE__);
-}
-
-TEST_F(NVFuserTest, FusionExpandedInputThrow_CUDA) {
-  std::unique_ptr<Fusion> fusion_ptr = std::make_unique<Fusion>();
-  auto fusion = fusion_ptr.get();
-  FusionGuard fg(fusion);
-
-  TensorView* tv0 = TensorViewBuilder()
-                        .ndims(3)
-                        .shape({3, 7, 3})
-                        .contiguity({false, false, true})
-                        .expanded({false, true, false})
-                        .build();
-  fusion->addInput(tv0);
-  auto tv1 = set(tv0);
-  tv1->domain()->setContiguity({true, true, true});
-  fusion->addOutput(tv1);
-
-  EXPECT_THAT(
-      [&]() { GpuLower lower(fusion); },
-      ::testing::ThrowsMessage<c10::Error>(::testing::HasSubstr(
-          "The expanded dim and the dim before it can not be contiguous.")));
 }
 
 // Repro for

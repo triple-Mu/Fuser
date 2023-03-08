@@ -47,7 +47,9 @@ void assertSimplifiedMod(Val* x, Val* y, Val* z) {
 
 } // namespace
 
-TEST_F(NVFuserTest, FusionAssociativeAndCommutativeReordering_CUDA) {
+class ExprSimplifierTest : public NVFuserTest {};
+
+TEST_F(ExprSimplifierTest, AssociativeAndCommutativeReordering_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   Fusion& fusion = *fusion_ptr.get();
   FusionGuard fg(&fusion);
@@ -114,7 +116,7 @@ TEST_F(NVFuserTest, FusionAssociativeAndCommutativeReordering_CUDA) {
   }
 }
 
-TEST_F(NVFuserTest, FusionEliminateTrivialComputation_CUDA) {
+TEST_F(ExprSimplifierTest, EliminateTrivialComputation_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   Fusion& fusion = *fusion_ptr.get();
   FusionGuard fg(&fusion);
@@ -196,7 +198,7 @@ TEST_F(NVFuserTest, FusionEliminateTrivialComputation_CUDA) {
   TORCH_CHECK(simplifyExpr(sub(mul(x, y), mul(y, x)))->isZeroInt());
 }
 
-TEST_F(NVFuserTest, FusionSimplifyDivisibleDivMod_CUDA) {
+TEST_F(ExprSimplifierTest, SimplifyDivisibleDivMod_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   Fusion& fusion = *fusion_ptr.get();
   FusionGuard fg(&fusion);
@@ -271,7 +273,7 @@ TEST_F(NVFuserTest, FusionSimplifyDivisibleDivMod_CUDA) {
       three);
 }
 
-TEST_F(NVFuserTest, FusionSignProve_CUDA) {
+TEST_F(ExprSimplifierTest, SignProve_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   Fusion& fusion = *fusion_ptr.get();
   FusionGuard fg(&fusion);
@@ -381,7 +383,7 @@ TEST_F(NVFuserTest, FusionSignProve_CUDA) {
       mod(add(d, one), add(add(a, two), add(b, c))), variables);
 }
 
-TEST_F(NVFuserTest, FusionEquivalenceSimplification_CUDA) {
+TEST_F(ExprSimplifierTest, EquivalenceSimplification_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   Fusion& fusion = *fusion_ptr.get();
   FusionGuard fg(&fusion);
@@ -406,7 +408,7 @@ TEST_F(NVFuserTest, FusionEquivalenceSimplification_CUDA) {
   assertProvedEquiv(mod(mul(a, c), b), mod(mul(c, a), b));
 }
 
-TEST_F(NVFuserTest, FusionCancelDivMod_CUDA) {
+TEST_F(ExprSimplifierTest, CancelDivMod_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   Fusion& fusion = *fusion_ptr.get();
   FusionGuard fg(&fusion);
@@ -436,7 +438,7 @@ TEST_F(NVFuserTest, FusionCancelDivMod_CUDA) {
       mul(mod(one, mul(five, b)), mul(three, a)));
 }
 
-TEST_F(NVFuserTest, FusionDistributeDivisibleDivMod_CUDA) {
+TEST_F(ExprSimplifierTest, DistributeDivisibleDivMod_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   Fusion& fusion = *fusion_ptr.get();
   FusionGuard fg(&fusion);
@@ -449,7 +451,7 @@ TEST_F(NVFuserTest, FusionDistributeDivisibleDivMod_CUDA) {
   assertSimplifiedMod(add(mul(a, b), c), a, mod(c, a));
 }
 
-TEST_F(NVFuserTest, FusionDistributeMul_CUDA) {
+TEST_F(ExprSimplifierTest, DistributeMul_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   Fusion& fusion = *fusion_ptr.get();
   FusionGuard fg(&fusion);
@@ -464,7 +466,7 @@ TEST_F(NVFuserTest, FusionDistributeMul_CUDA) {
       mul(a, add(add(b, c), d)), add(add(mul(a, b), mul(a, c)), mul(a, d))));
 }
 
-TEST_F(NVFuserTest, FusionFundamentalDivisionWithRemainderProperty_CUDA) {
+TEST_F(ExprSimplifierTest, FundamentalDivisionWithRemainderProperty_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   Fusion& fusion = *fusion_ptr.get();
   FusionGuard fg(&fusion);
@@ -482,6 +484,172 @@ TEST_F(NVFuserTest, FusionFundamentalDivisionWithRemainderProperty_CUDA) {
   TORCH_CHECK(isEquivalent(
       add(add(b, mul(cpp_div(a, c), mul(c, d))), mul(d, mod(a, c))),
       add(mul(a, d), b)));
+}
+
+TEST_F(ExprSimplifierTest, ReducePredicateRegisterUsage_CUDA) {
+  auto fusion_ptr = std::make_unique<Fusion>();
+  Fusion& fusion = *fusion_ptr.get();
+  FusionGuard fg(&fusion);
+
+  auto a = IrBuilder::create<NamedScalar>("a", DataType::Int);
+  auto b = IrBuilder::create<NamedScalar>("b", DataType::Int);
+  auto u1 = IrBuilder::create<NamedScalar>("u1", DataType::Int);
+  auto u2 = IrBuilder::create<NamedScalar>("u2", DataType::Int);
+  auto tidx = NamedScalar::getParallelIndex(ParallelType::TIDx);
+  auto zero = fusion.zeroVal();
+  auto one = fusion.oneVal();
+  auto five = IrBuilder::create<Int>(5);
+  auto neg_five = IrBuilder::create<Int>(-5);
+
+  auto unroll_gp1 = mul(tidx, u1);
+  auto unroll_uniform1 = mul(a, u1);
+  auto unroll_imm1 = mul(five, u1);
+  auto unroll_gp2 = mul(tidx, u2);
+  auto unroll_uniform2 = mul(a, u2);
+  auto unroll_imm2 = mul(five, u2);
+
+  std::list<VarInfo> variables{
+      VarInfo{u1, zero, five, one, true}, VarInfo{u2, zero, five, one, true}};
+
+  // unroll + other == unroll + other
+  {
+    // can not save
+    auto v1 = eq(add(b, unroll_gp1), add(five, unroll_gp2));
+    TORCH_CHECK(simplifyExpr(v1, variables)->sameAs(v1));
+    auto v2 = eq(add(b, unroll_uniform1), add(five, unroll_uniform2));
+    TORCH_CHECK(simplifyExpr(v2, variables)->sameAs(v2));
+
+    // save general purpose register
+    auto v3 = eq(add(unroll_uniform1, tidx), add(unroll_uniform2, five));
+    auto v3_simplified =
+        eq(add(tidx, neg_five), add(neg(unroll_uniform1), unroll_uniform2));
+    TORCH_CHECK(simplifyExpr(v3, variables)->sameAs(v3_simplified));
+    auto v4 = eq(add(unroll_imm1, tidx), add(unroll_imm2, five));
+    auto v4_simplified =
+        eq(add(tidx, neg_five), add(neg(unroll_imm1), unroll_imm2));
+    TORCH_CHECK(simplifyExpr(v4, variables)->sameAs(v4_simplified));
+
+    // unroll + other == unroll + other, save uniform register
+    auto v5 = eq(add(unroll_imm1, a), add(unroll_imm2, five));
+    auto v5_simplify = eq(add(a, neg_five), add(neg(unroll_imm1), unroll_imm2));
+    TORCH_CHECK(simplifyExpr(v5, variables)->sameAs(v5_simplify));
+  }
+
+  // unroll + other == unroll
+  {
+    // can not save
+    auto v1 = eq(add(b, unroll_gp1), unroll_gp2);
+    TORCH_CHECK(simplifyExpr(v1, variables)->sameAs(v1));
+    auto v2 = eq(add(b, unroll_uniform1), unroll_uniform2);
+    TORCH_CHECK(simplifyExpr(v2, variables)->sameAs(v2));
+
+    // save general purpose register
+    auto v3 = eq(add(unroll_uniform1, tidx), unroll_uniform2);
+    auto v3_simplified = eq(tidx, add(neg(unroll_uniform1), unroll_uniform2));
+    TORCH_CHECK(simplifyExpr(v3, variables)->sameAs(v3_simplified));
+    auto v4 = eq(add(unroll_imm1, tidx), unroll_imm2);
+    auto v4_simplified = eq(tidx, add(neg(unroll_imm1), unroll_imm2));
+    TORCH_CHECK(simplifyExpr(v4, variables)->sameAs(v4_simplified));
+
+    // unroll + other == unroll + other, save uniform register
+    auto v5 = eq(add(unroll_imm1, a), unroll_imm2);
+    auto v5_simplify = eq(a, add(neg(unroll_imm1), unroll_imm2));
+    TORCH_CHECK(simplifyExpr(v5, variables)->sameAs(v5_simplify));
+  }
+
+  // unroll + other == other
+  {
+    // can not save
+    auto v1 = eq(add(b, unroll_gp1), five);
+    TORCH_CHECK(simplifyExpr(v1, variables)->sameAs(v1));
+    auto v2 = eq(add(b, unroll_uniform1), five);
+    TORCH_CHECK(simplifyExpr(v2, variables)->sameAs(v2));
+
+    // save general purpose register
+    auto v3 = eq(add(unroll_uniform1, tidx), five);
+    auto v3_simplified = eq(add(tidx, neg_five), neg(unroll_uniform1));
+    TORCH_CHECK(simplifyExpr(v3, variables)->sameAs(v3_simplified));
+    auto v4 = eq(add(unroll_imm1, tidx), five);
+    auto v4_simplified = eq(add(tidx, neg_five), neg(unroll_imm1));
+    TORCH_CHECK(simplifyExpr(v4, variables)->sameAs(v4_simplified));
+
+    // unroll + other == unroll + other, save uniform register
+    auto v5 = eq(add(unroll_imm1, a), five);
+    auto v5_simplify = eq(add(a, neg_five), neg(unroll_imm1));
+    TORCH_CHECK(simplifyExpr(v5, variables)->sameAs(v5_simplify));
+  }
+
+  // unroll + other == 0
+  {
+    // can not save
+    auto v1 = eq(add(b, unroll_gp1), zero);
+    TORCH_CHECK(simplifyExpr(v1, variables)->sameAs(v1));
+    auto v2 = eq(add(b, unroll_uniform1), zero);
+    TORCH_CHECK(simplifyExpr(v2, variables)->sameAs(v2));
+
+    // save general purpose register
+    auto v3 = eq(add(unroll_uniform1, tidx), zero);
+    auto v3_simplified = eq(tidx, neg(unroll_uniform1));
+    TORCH_CHECK(simplifyExpr(v3, variables)->sameAs(v3_simplified));
+    auto v4 = eq(add(unroll_imm1, tidx), zero);
+    auto v4_simplified = eq(tidx, neg(unroll_imm1));
+    TORCH_CHECK(simplifyExpr(v4, variables)->sameAs(v4_simplified));
+
+    // unroll + other == unroll + other, save uniform register
+    auto v5 = eq(add(unroll_imm1, a), zero);
+    auto v5_simplify = eq(a, neg(unroll_imm1));
+    TORCH_CHECK(simplifyExpr(v5, variables)->sameAs(v5_simplify));
+  }
+
+  // unroll == other
+  {
+    auto v1 = eq(unroll_gp1, five);
+    TORCH_CHECK(simplifyExpr(v1, variables)->sameAs(v1));
+    auto v2 = eq(unroll_uniform1, five);
+    TORCH_CHECK(simplifyExpr(v2, variables)->sameAs(v2));
+    auto v3 = eq(unroll_imm1, five);
+    TORCH_CHECK(simplifyExpr(v3, variables)->sameAs(v3));
+  }
+
+  // other == unroll
+  {
+    auto v1 = eq(five, unroll_gp1);
+    TORCH_CHECK(simplifyExpr(v1, variables)->sameAs(v1));
+    auto v2 = eq(five, unroll_uniform1);
+    TORCH_CHECK(simplifyExpr(v2, variables)->sameAs(v2));
+    auto v3 = eq(five, unroll_imm1);
+    TORCH_CHECK(simplifyExpr(v3, variables)->sameAs(v3));
+  }
+
+  // other == other
+  {
+    auto v1 = eq(five, tidx);
+    TORCH_CHECK(simplifyExpr(v1, variables)->sameAs(v1));
+    auto v2 = eq(five, a);
+    TORCH_CHECK(simplifyExpr(v2, variables)->sameAs(v2));
+  }
+
+  // unroll == unroll
+  {
+    auto v1 = eq(unroll_gp2, unroll_gp1);
+    TORCH_CHECK(simplifyExpr(v1, variables)->sameAs(v1));
+    auto v2 = eq(unroll_gp2, unroll_uniform1);
+    TORCH_CHECK(simplifyExpr(v2, variables)->sameAs(v2));
+    auto v3 = eq(unroll_gp2, unroll_imm1);
+    TORCH_CHECK(simplifyExpr(v3, variables)->sameAs(v3));
+    auto v4 = eq(unroll_uniform2, unroll_gp1);
+    TORCH_CHECK(simplifyExpr(v4, variables)->sameAs(v4));
+    auto v5 = eq(unroll_uniform2, unroll_uniform1);
+    TORCH_CHECK(simplifyExpr(v5, variables)->sameAs(v5));
+    auto v6 = eq(unroll_uniform2, unroll_imm1);
+    TORCH_CHECK(simplifyExpr(v6, variables)->sameAs(v6));
+    auto v7 = eq(unroll_imm2, unroll_gp1);
+    TORCH_CHECK(simplifyExpr(v7, variables)->sameAs(v7));
+    auto v8 = eq(unroll_imm2, unroll_uniform1);
+    TORCH_CHECK(simplifyExpr(v8, variables)->sameAs(v8));
+    auto v9 = eq(unroll_imm2, unroll_imm1);
+    TORCH_CHECK(simplifyExpr(v9, variables)->sameAs(v9));
+  }
 }
 
 } // namespace nvfuser

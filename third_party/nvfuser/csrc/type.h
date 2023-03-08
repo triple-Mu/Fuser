@@ -33,6 +33,7 @@ enum class ValType {
   NamedScalar,
   Predicate,
   TensorIndex,
+  AggregateVal,
   Attribute
 };
 
@@ -138,9 +139,11 @@ DataType indexModeToDtype(KernelIndexMode index_mode);
 
 // Returns if the datatype is a floating point type
 TORCH_CUDA_CU_API bool isFloatingPointType(DataType dtype);
-// Returns if the datatype is an boolean type
-TORCH_CUDA_CU_API bool isIntegralType(DataType dtype);
 // Returns if the datatype is an integer type
+TORCH_CUDA_CU_API bool isIntegralType(DataType dtype);
+// Returns if the datatype is a pointer type
+TORCH_CUDA_CU_API bool isPointerType(DataType dtype);
+// Returns if the datatype is an boolean type
 TORCH_CUDA_CU_API bool isBooleanType(DataType dtype);
 // Returns if the datatype is a complex type
 TORCH_CUDA_CU_API bool isComplexType(DataType dtype);

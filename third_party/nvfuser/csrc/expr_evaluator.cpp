@@ -104,7 +104,7 @@ c10::optional<EvaluatorValue> ExpressionEvaluator::evaluate(const Val* value) {
   if (!maybe_concrete_value.has_value()) {
     if (auto def = value->definition()) {
       FUSER_PERF_SCOPE("ExpressionEvaluator::evaluate");
-      if (def->isA<kir::SMemAddress>()) {
+      if (def->isA<kir::BaseAddress>()) {
         return c10::nullopt;
       }
       std::vector<EvaluatorValue> inputs;

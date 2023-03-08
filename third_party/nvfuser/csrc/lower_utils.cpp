@@ -56,7 +56,8 @@ ir_utils::TVDomainGuard overrideContiguityGuard(
   //  consumer tv.
   TensorDomain* domain_with_specified_contiguity = nullptr;
   std::vector<bool> contiguity_vector(
-      tv->getMaybeRFactorDomain().size(), contiguity);
+      TensorDomain::noBroadcasts(tv->getMaybeRFactorDomain()).size(),
+      contiguity);
   if (tv->hasRFactor()) {
     domain_with_specified_contiguity = IrBuilder::create<TensorDomain>(
         tv->getRootDomain(),

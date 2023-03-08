@@ -1784,6 +1784,13 @@ class TORCH_CUDA_CU_API TensorDomain : public Val {
     return domain_;
   }
 
+  // Note: [Contiguity]
+  // Contiguity is a bool vector which has the same number of elements as
+  // noBroadcasts(rfactor_domain_). The contiguity of a broadcast dimension is
+  // not defined. The contiguity of a non-broadcasting dimension is true if and
+  // only if it is memory dense with the next non-broadcasting dimension.
+  // For example, if I have a tensor torch.zeros(4, 1, 3).expand(-1, 10, -1),
+  // the contiguity will be (true, true), which means 4 is memory dense with 3.
   const std::vector<bool>& contiguity() const {
     return contiguity_;
   }
@@ -1894,44 +1901,8 @@ class TORCH_CUDA_CU_API TensorDomain : public Val {
   static bool hasBroadcast(const std::vector<IterDomain*>&);
   static bool hasReduction(const std::vector<IterDomain*>&);
 
-  // Get a vector of the same size as the given rfactor domain filled with true
-  // except at the expanded dims and the dims right before expanded dims.
-  //
-  // Note: [Contiguity and expand]
-  //
-  // In the context of nvfuser, if a non-last dimension is contiguous, it means
-  // that we can collapse its index into the next dimension during indexing. If
-  // the last dimension is contiguous, it means that the last dimension has
-  // stride 1. For example, if we have a tensor T1 of shape (4, 5, 6, 7) with
-  // contiguity (true, false, true, false), then we can iterate the tensor with
-  // the following for loops:
-  //
-  //   for i in range(4*5):
-  //     for j in range(6*7):
-  //       element = T1[0, i, 0, j]
-  //
-  // Note that in the above loop, we are doing out-of-bound access of T1's dim 1
-  // and 3, but still getting the correct result.
-  //
-  // For expanded tensor, for example we expand from T2 = shape(4, 5, 1, 6) to
-  // T3 = shape(4, 5, 10, 6), then before we materialize the expand, the stride
-  // of the expanded dimension must remain 0 because by definition, different
-  // indexes in the expanded dimension must map to the same underlying element.
-  // This means that the contiguity of the expanded dimension can not be true.
-  // That is, is we access T3 with the following loop:
-  //
-  //   for i in range(4):
-  //     for j in range(5):
-  //       for k in range(10*6):
-  //         element = T3[i, j, 0, k]
-  //
-  // we will not get the correct result, because T3 is not materialized and
-  // T3[0, 0, 0, 7] is actually accessing T2[0, 1, 0, 1] which is different from
-  // the correct element T3[0, 0, 1, 1] == T2[0, 0, 0, 1]. Similarly, since the
-  // stride of the expanded dimension is always zero, the index of the dimension
-  // before it can not be coalapsed into the expanded dimension as well. For
-  // example, T3[0, 0, 11, 0] points to T2[0, 0, 0, 0], which is different from
-  // the correct element T3[0, 1, 1, 0] == T2[0, 1, 0, 0].
+  // Get a vector whose size is the number of non-broadcast IDs in the given
+  // rfactor_domain filled with true.
   static std::vector<bool> getContiguousContiguity(
       const std::vector<IterDomain*>& rfactor_domain);
 

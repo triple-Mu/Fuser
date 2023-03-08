@@ -259,7 +259,8 @@ int64_t Val::evaluateInt() {
   auto evaluated_val = ee.evaluate(this);
   TORCH_INTERNAL_ASSERT(
       evaluated_val.has_value(),
-      "Detected a const integer but failed to infer its value.");
+      "Detected a const integer but failed to infer its value: ",
+      toInlineString());
   return evaluated_val->as<int64_t>();
 }
 

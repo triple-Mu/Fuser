@@ -14,7 +14,7 @@ Val* IndexLowering::lowerSrcIndex(
     Val* src,
     Val* dst,
     const std::unordered_map<IterDomain*, Val*>& override_index,
-    bool cvta_smem_address) const {
+    bool generate_pointer) const {
   if (auto tv = dynamic_cast<TensorView*>(src)) {
     TORCH_INTERNAL_ASSERT(dst->isA<TensorView>());
     return Index::getProducerIndex(
@@ -23,7 +23,7 @@ Val* IndexLowering::lowerSrcIndex(
         for_loops_,
         getRotatedLoop(),
         override_index,
-        cvta_smem_address);
+        generate_pointer);
   } else {
     return src;
   }
@@ -32,10 +32,10 @@ Val* IndexLowering::lowerSrcIndex(
 Val* IndexLowering::lowerDstIndex(
     Val* dst,
     const std::unordered_map<int, Val*>& override_index,
-    bool cvta_smem_address) const {
+    bool generate_pointer) const {
   if (auto tv = dynamic_cast<TensorView*>(dst)) {
     return Index::getConsumerIndex(
-        tv, for_loops_, getRotatedLoop(), override_index, cvta_smem_address);
+        tv, for_loops_, getRotatedLoop(), override_index, generate_pointer);
   } else {
     return dst;
   }
@@ -1215,8 +1215,11 @@ void IndexLowering::handleGroupedGridWelford(
 }
 
 void IndexLowering::handle(const LoadStoreOp* ldst) {
+  // Today, LoadStoreOp can only be ld.matrix and cp.async. In the future, when
+  // we start to work on hopper support, this can also be TMA operations.
   const auto in = lowerSrcIndex(ldst->in(), ldst->out(), {}, true);
-  const auto out = lowerDstIndex(ldst->out(), {}, true);
+  const auto out =
+      lowerDstIndex(ldst->out(), {}, !ir_utils::isLdMatrixOp(ldst));
   auto new_ldst = IrBuilder::create<LoadStoreOp>(ldst->opType(), out, in)
                       ->withPredicate(ldst->predicate());
   pushBack(new_ldst);

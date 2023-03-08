@@ -456,11 +456,6 @@ op_db: List[OpInfo] = [
                 "TestCudaFuserOpInfo",
                 "test_nvfuser_correctness",
             ),
-            DecorateInfo(
-                unittest.skip("Skipped!"),
-                "TestCudaFuserOpInfo",
-                "test_nvfuser_extremal_values",
-            ),
         ),
         decorators=[
             DecorateInfo(
@@ -664,11 +659,6 @@ op_db: List[OpInfo] = [
                 "TestCudaFuserOpInfo",
                 "test_nvfuser_correctness",
             ),
-            DecorateInfo(
-                unittest.skip("Skipped!"),
-                "TestCudaFuserOpInfo",
-                "test_nvfuser_extremal_values",
-            ),
         ),
         sample_inputs_func=sample_inputs_masked_reduction,
         sample_inputs_sparse_coo_func=sample_inputs_sparse_coo_masked_reduction,
@@ -713,11 +703,6 @@ op_db: List[OpInfo] = [
                 unittest.skip("Skipped!"),
                 "TestCudaFuserOpInfo",
                 "test_nvfuser_correctness",
-            ),
-            DecorateInfo(
-                unittest.skip("Skipped!"),
-                "TestCudaFuserOpInfo",
-                "test_nvfuser_extremal_values",
             ),
         ),
         sample_inputs_func=sample_inputs_masked_reduction,

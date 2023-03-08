@@ -159,10 +159,17 @@ TensorView* makeConcreteTensor(std::vector<int64_t> shape, DataType dtype) {
 TensorView* makeContigConcreteTensor(
     std::vector<int64_t> shape,
     DataType dtype) {
+  std::vector<bool> contiguity;
+  for (auto s : shape) {
+    if (s == 1) {
+      continue;
+    }
+    contiguity.push_back(true);
+  }
   return TensorViewBuilder()
       .shape(shape)
       .dtype(dtype)
-      .contiguity(std::vector<bool>(shape.size(), true))
+      .contiguity(contiguity)
       .build();
 }
 

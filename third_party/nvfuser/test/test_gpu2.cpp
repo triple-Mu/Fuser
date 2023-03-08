@@ -8699,9 +8699,6 @@ TEST_F(NVFuserTest, FusionGridReductionWithNonExactParallelDimensions2_CUDA) {
   tv5->axis(1)->parallelize(ParallelType::BIDy);
   tv5->axis(2)->parallelize(ParallelType::BIDz);
 
-  // TODO: This needs a fix for issue #1102.
-  // Also, need to allow predicated grid reductions.
-#if 0
   FusionExecutor fe;
   fe.compileFusion(&fusion);
 
@@ -8718,7 +8715,6 @@ TEST_F(NVFuserTest, FusionGridReductionWithNonExactParallelDimensions2_CUDA) {
 
   testValidate(
       &fusion, outputs, aten_inputs, {ref1, ref2, ref3}, __LINE__, __FILE__);
-#endif
 }
 
 TEST_F(NVFuserTest, FusionGridWelfordWithNonExactParallelDimensions2_CUDA) {
@@ -8752,9 +8748,6 @@ TEST_F(NVFuserTest, FusionGridWelfordWithNonExactParallelDimensions2_CUDA) {
   tv5->axis(1)->parallelize(ParallelType::BIDy);
   tv5->axis(2)->parallelize(ParallelType::BIDz);
 
-  // TODO: needs a fix for issue #1102
-  // Also, need to allow predicated grid reductions.
-#if 0
   FusionExecutor fe;
   fe.compileFusion(&fusion);
 
@@ -8771,7 +8764,6 @@ TEST_F(NVFuserTest, FusionGridWelfordWithNonExactParallelDimensions2_CUDA) {
 
   testValidate(
       &fusion, outputs, aten_inputs, {ref1, ref2, ref3}, __LINE__, __FILE__);
-#endif
 }
 
 // Repro of issue #1102
@@ -9037,10 +9029,8 @@ TEST_F(NVFuserTest, FusionChannelsLastParser_CUDA) {
   // 2. use a fuzzy compare (ignore non-significant whitespaces for example)
   const std::string expected_kernel = R"(
 __global__ void CUDAGeneratedKernel(Tensor<__half, 4> T0, Tensor<__half, 4> T2, Tensor<__half, 4> T7) {
-  int64_t i274;
-  i274 = ((nvfuser_index_t)blockIdx.x) * 128;
   int64_t i275;
-  i275 = i274 + ((nvfuser_index_t)threadIdx.x);
+  i275 = (((nvfuser_index_t)blockIdx.x) * 128) + ((nvfuser_index_t)threadIdx.x);
   int64_t i277;
   i277 = (T0.size[1] * T0.size[2]) * T0.size[3];
   int64_t i311;
@@ -9049,7 +9039,7 @@ __global__ void CUDAGeneratedKernel(Tensor<__half, 4> T0, Tensor<__half, 4> T2, 
   i287 = T0.size[2] * T0.size[3];
   int64_t i312;
   i312 = i311 % i287;
-  if ((((nvfuser_index_t)threadIdx.x) < ((((T0.size[0] * T0.size[1]) * T0.size[2]) * T0.size[3]) - i274))) {
+  if ((i275 < (((T0.size[0] * T0.size[1]) * T0.size[2]) * T0.size[3]))) {
     __half T9[1];
     T9[0] = 0;
     T9[0]

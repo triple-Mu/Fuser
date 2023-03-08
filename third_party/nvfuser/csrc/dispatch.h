@@ -67,6 +67,8 @@ using Int = Scalar<int64_t>;
 using ComplexDouble = Scalar<std::complex<double>>;
 class NamedScalar;
 
+class AggregateVal;
+
 // Exprs
 class FullOp;
 class IotaOp;
@@ -97,6 +99,9 @@ class CatOp;
 class PadOp;
 class SliceOp;
 
+class AggregateExpr;
+class SendRecv;
+
 // Exprs
 class Split;
 class Merge;
@@ -123,7 +128,7 @@ class VectorizedWelfordOp;
 class AllocateFusedReduction;
 class InitMagicZero;
 class UpdateMagicZero;
-class SMemAddress;
+class BaseAddress;
 
 } // namespace kir
 
@@ -151,6 +156,8 @@ class TORCH_CUDA_CU_API OptOutConstDispatch : public PolymorphicBase {
 
   virtual void handle(const kir::Predicate*);
   virtual void handle(const kir::TensorIndex*);
+
+  virtual void handle(const AggregateVal*);
 
   // Exprs
   virtual void handle(const FullOp* stmt);
@@ -203,7 +210,10 @@ class TORCH_CUDA_CU_API OptOutConstDispatch : public PolymorphicBase {
   virtual void handle(const kir::GroupedGridWelford*);
   virtual void handle(const kir::VectorizedWelfordOp*);
   virtual void handle(const kir::AllocateFusedReduction*);
-  virtual void handle(const kir::SMemAddress*);
+  virtual void handle(const kir::BaseAddress*);
+
+  virtual void handle(const AggregateExpr*);
+  virtual void handle(const SendRecv*);
 };
 
 class TORCH_CUDA_CU_API OptOutDispatch : public PolymorphicBase {
@@ -228,6 +238,8 @@ class TORCH_CUDA_CU_API OptOutDispatch : public PolymorphicBase {
 
   virtual void handle(kir::Predicate*);
   virtual void handle(kir::TensorIndex*);
+
+  virtual void handle(AggregateVal*);
 
   // Exprs
   virtual void handle(FullOp* stmt);
@@ -280,7 +292,10 @@ class TORCH_CUDA_CU_API OptOutDispatch : public PolymorphicBase {
   virtual void handle(kir::GroupedGridWelford* stmt);
   virtual void handle(kir::VectorizedWelfordOp* stmt);
   virtual void handle(kir::AllocateFusedReduction* stmt);
-  virtual void handle(kir::SMemAddress* stmt);
+  virtual void handle(kir::BaseAddress* stmt);
+
+  virtual void handle(AggregateExpr* stmt);
+  virtual void handle(SendRecv* stmt);
 };
 
 class TORCH_CUDA_CU_API OptInConstDispatch : public OptOutConstDispatch {

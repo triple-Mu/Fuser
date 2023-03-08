@@ -1195,11 +1195,9 @@ TEST_F(NVFuserTest, FusionParser_CUDA) {
   // 2. use a fuzzy compare (ignore non-significant whitespaces for example)
   const std::string expected_kernel = R"(
 __global__ void CUDAGeneratedKernel(Tensor<float, 1> T0, Tensor<float, 1> T1, Tensor<float, 1> T3) {
-  int64_t i53;
-  i53 = ((nvfuser_index_t)blockIdx.x) * 128;
   int64_t i54;
-  i54 = i53 + ((nvfuser_index_t)threadIdx.x);
-  if ((((nvfuser_index_t)threadIdx.x) < (T0.size[0] - i53))) {
+  i54 = (((nvfuser_index_t)blockIdx.x) * 128) + ((nvfuser_index_t)threadIdx.x);
+  if ((i54 < T0.size[0])) {
     float T5[1];
     T5[0] = 0;
     T5[0]
@@ -4300,9 +4298,15 @@ TEST_F(NVFuserTest, FusionMultiGridReduction2_CUDA) {
   tv1->axis(1)->parallelize(ParallelType::BIDy);
   tv2->axis(0)->parallelize(ParallelType::BIDy);
 
+  auto options = at::TensorOptions().dtype(at::kFloat).device(at::kCUDA, 0);
+  at::Tensor input = at::randn({4, 8}, options);
+
   FusionExecutor fe;
-  // NOLINTNEXTLINE(cppcoreguidelines-avoid-goto,hicpp-avoid-goto)
-  ASSERT_ANY_THROW(fe.compileFusion(&fusion));
+  fe.compileFusion(&fusion, {input});
+  auto cg_output = fe.runFusion({input});
+  std::vector<int64_t> dim_to_sum({0, 1});
+  auto aten_output = input.to(at::kDouble).sum(dim_to_sum);
+  testValidate(&fusion, cg_output, {input}, {aten_output}, __LINE__, __FILE__);
 }
 
 TEST_F(NVFuserTest, FusionReductionTFT_CUDA) {

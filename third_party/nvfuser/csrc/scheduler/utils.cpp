@@ -1174,13 +1174,7 @@ IterDomain* innerMostRootDim(TensorView* tv) {
     // vectorization opportunity. If we're looking at a reduction reference
     // tensor we want to consider the reduction iteration domains as domains we
     // can vectorize on.
-    if ((*it)->isReduction() && tv->isFusionInput()) {
-      continue;
-    }
-    if ((*it)->isBroadcast()) {
-      if (inner_most_id == nullptr) {
-        inner_most_id = *it;
-      }
+    if (((*it)->isReduction() && tv->isFusionInput()) || (*it)->isBroadcast()) {
       continue;
     }
     inner_most_id = *it;
@@ -1287,19 +1281,23 @@ bool hasInnerDim(
     return true;
   }
 
+  auto rfactor_dom_nob =
+      TensorDomain::noBroadcasts(tv->getMaybeRFactorDomain());
+
   auto root_pos_it = std::find_if(
-      tv->getMaybeRFactorDomain().begin(),
-      tv->getMaybeRFactorDomain().end(),
+      rfactor_dom_nob.begin(),
+      rfactor_dom_nob.end(),
       [&inner_most_dim](IterDomain* id) { return inner_most_dim == id; });
 
-  TORCH_INTERNAL_ASSERT(root_pos_it != tv->getMaybeRFactorDomain().end());
-  auto inner_most_dim_pos =
-      std::distance(tv->getMaybeRFactorDomain().begin(), root_pos_it);
+  if (root_pos_it == rfactor_dom_nob.end()) {
+    return false;
+  }
+
+  auto inner_most_dim_pos = std::distance(rfactor_dom_nob.begin(), root_pos_it);
 
   const auto& contiguity = tv->domain()->contiguity();
 
-  TORCH_INTERNAL_ASSERT(
-      contiguity.size() == tv->getMaybeRFactorDomain().size());
+  TORCH_INTERNAL_ASSERT(contiguity.size() == rfactor_dom_nob.size());
 
   // Don't vectorize if inner most dimension is not contiguous
   if (!contiguity[inner_most_dim_pos]) {
@@ -1585,12 +1583,12 @@ void scheduleWarpTileWithReduction(TensorView* tv, MatMulTileOptions tile) {
     tv->split(-2, instruction_tile.n);
     tv->split(-1, instruction_tile.k);
 
-    //   -8  -7 -6 -5 -4 -3 -2 -1
-    // [Mwo Mw Mi Nwo Nw Ni Ko Ki]
+    //   -8  -7 -6 -5 -4 -3  -2 -1
+    // [Mwo Mw Mi Nwo Nw Ni Kwo Ki]
 
-    tv->reorder({{-7, -5}, {-6, -3}, {-5, -7}, {-3, -2}, {-2, -6}});
-    //   -8  -7  -6 -5 -4 -3 -2 -1
-    // [Mwo  Nwo Ko Mw Nw Mi Ni Ki]
+    tv->reorder({{-7, -5}, {-6, -3}, {-5, -6}, {-3, -2}, {-2, -8}, {-8, -7}});
+    //   -8  -7 -6  -5 -4 -3 -2 -1
+    // [Kwo Mwo Nwo Mw Nw Mi Ni Ki]
   } else {
     // Split K over warp case:
     // Main difference is that an additional
@@ -1603,8 +1601,8 @@ void scheduleWarpTileWithReduction(TensorView* tv, MatMulTileOptions tile) {
     tv->split(-2, warp_tile.n);
     tv->split(-1, warp_tile.k);
 
-    //   -6  -5   -4   -3   -2 -1
-    // [Mwo  Mw  Nwo   Nw   K, Kw]
+    //   -6  -5   -4   -3   -2   -1
+    // [Mwo  Mw  Nwo   Nw   Kwo  Kw]
     tv->split(-5, instruction_tile.m);
     tv->split(-3, instruction_tile.n);
     tv->split(-1, instruction_tile.k);

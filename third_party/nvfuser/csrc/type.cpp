@@ -59,6 +59,11 @@ bool isIntegralType(DataType dtype) {
       dtype.type);
 }
 
+bool isPointerType(DataType dtype) {
+  return std::holds_alternative<PointerOf>(dtype.type) ||
+      dtype == DataType::SMemAddress;
+}
+
 bool isComplexType(DataType dtype) {
   TORCH_CHECK(
       dtype != DataType::Null,
@@ -193,6 +198,8 @@ static const char* val_type2string(ValType t) {
       return "Predicate";
     case ValType::TensorIndex:
       return "TensorIndex";
+    case ValType::AggregateVal:
+      return "AggregateVal";
     default:
       TORCH_INTERNAL_ASSERT(false, "No string found for val type.");
   }
@@ -1063,6 +1070,9 @@ std::string stringifyThread(const ParallelType ptype) {
 }
 
 std::string typePrefix(const DataType data_type) {
+  if (std::holds_alternative<PointerOf>(data_type.type)) {
+    return "ptr";
+  }
   switch (std::get<PrimDataType>(data_type.type)) {
     case DataType::Bool:
       return "b";

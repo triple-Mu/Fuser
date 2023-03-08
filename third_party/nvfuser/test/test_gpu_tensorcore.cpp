@@ -906,7 +906,7 @@ TEST_F(NVFuserTest, FusionMatmulMatmulAmpere_CUDA) {
   scheduler_utils::matmul_utils::scheduleWarpTileWithNoReduction(
       tv4, gemm_tile2);
   //           -8   -7  -6 -5 -4 -3 -2 -1
-  // [Mo No Ko Mwo  Nwo Kwo Mw Nw Mi Ni Ki]
+  // [Mo No Ko Kwo Mwo Nwo Mw Nw Mi Ni Ki]
   tv3cr->computeAt(tv4c, -4);
   tv2cr->computeAt(tv4c, -4);
 
@@ -1023,8 +1023,8 @@ TEST_F(NVFuserTest, FusionMatmulMatmulAmpere_CUDA) {
   //  0  1  2   3   4   5  6  7
   // [Mo No Mwo Nwo Mw Nw (Mi Ni)]
   // Gemm 1
-  tv3c->axis(3)->parallelize(ParallelType::TIDz);
-  tv3c->axis(4)->parallelize(ParallelType::TIDy);
+  tv3c->axis(4)->parallelize(ParallelType::TIDz);
+  tv3c->axis(5)->parallelize(ParallelType::TIDy);
 
   tv3->computeAt(tv3cw, -2);
   tv3cw->axis(2)->parallelize(ParallelType::TIDz);
@@ -1033,8 +1033,8 @@ TEST_F(NVFuserTest, FusionMatmulMatmulAmpere_CUDA) {
   // Gemm 2
   tv4->axis(2)->parallelize(ParallelType::TIDz);
   tv4->axis(3)->parallelize(ParallelType::TIDy);
-  tv4c->axis(3)->parallelize(ParallelType::TIDz);
-  tv4c->axis(4)->parallelize(ParallelType::TIDy);
+  tv4c->axis(4)->parallelize(ParallelType::TIDz);
+  tv4c->axis(5)->parallelize(ParallelType::TIDy);
 
   tv4->axis(0)->parallelize(ParallelType::BIDx);
   tv4->axis(1)->parallelize(ParallelType::BIDy);
@@ -1211,8 +1211,8 @@ TEST_F(NVFuserTest, FusionMatmulSoftmaxMatmulAmpere_CUDA) {
   scheduler_utils::matmul_utils::scheduleWarpTileWithReduction(tv4c, gemm_tile);
   scheduler_utils::matmul_utils::scheduleWarpTileWithNoReduction(
       tv4, gemm_tile);
-  //           -8   -7  -6 -5 -4 -3 -2 -1
-  // [Mo No Ko Mwo  Nwo Kwo Mw Nw Mi Ni Ki]
+  //           -8  -7  -6  -5 -4 -3 -2 -1
+  // [Mo No Ko Kwo Mwo Nwo Mw Nw Mi Ni Ki]
   tv3cr->computeAt(tv4c, -4);
   tv2cr->computeAt(tv4c, -4);
 
@@ -1388,8 +1388,8 @@ TEST_F(NVFuserTest, FusionMatmulSoftmaxMatmulAmpere_CUDA) {
   //  0  1  2   3   4   5  6  7
   // [Mo No Mwo Nwo Mw Nw (Mi Ni)]
   // Gemm 1
-  tv3c->axis(3)->parallelize(ParallelType::TIDz);
-  tv3c->axis(4)->parallelize(ParallelType::TIDy);
+  tv3c->axis(4)->parallelize(ParallelType::TIDz);
+  tv3c->axis(5)->parallelize(ParallelType::TIDy);
   tv3->axis(2)->parallelize(ParallelType::TIDz);
   tv3->axis(3)->parallelize(ParallelType::TIDy);
 
@@ -1421,8 +1421,8 @@ TEST_F(NVFuserTest, FusionMatmulSoftmaxMatmulAmpere_CUDA) {
   // Gemm 2
   tv4->axis(2)->parallelize(ParallelType::TIDz);
   tv4->axis(3)->parallelize(ParallelType::TIDy);
-  tv4c->axis(3)->parallelize(ParallelType::TIDz);
-  tv4c->axis(4)->parallelize(ParallelType::TIDy);
+  tv4c->axis(4)->parallelize(ParallelType::TIDz);
+  tv4c->axis(5)->parallelize(ParallelType::TIDy);
 
   auto options = at::TensorOptions().dtype(at::kHalf).device(at::kCUDA, 0);
   auto t0 = at::randn({M1, K1}, options);
@@ -1789,8 +1789,8 @@ TEST_F(NVFuserTest, FusionAmpereMatmulTNcpAsync_CUDA) {
   scheduler_utils::matmul_utils::scheduleWarpTileWithReduction(tv2c, gemm_tile);
   scheduler_utils::matmul_utils::scheduleWarpTileWithNoReduction(
       tv2, gemm_tile);
-  //           -8   -7  -6 -5 -4 -3 -2 -1
-  // [Mo No Ko Mwo  Nwo Kwo Mw Nw Mi Ni Ki]
+  //           -8  -7  -6  -5 -4 -3 -2 -1
+  // [Mo No Ko Kwo Mwo Nwo Mw Nw Mi Ni Ki]
   tv0cr->computeAt(tv2c, -4);
   tv1cr->computeAt(tv2c, -4);
 
@@ -1827,10 +1827,10 @@ TEST_F(NVFuserTest, FusionAmpereMatmulTNcpAsync_CUDA) {
       mma_builder.operand(MmaOptions::Operand::Accumulator).build());
 
   // Parallelize
-  //  0   1  2  3    4   5  6  7  8  9  10
-  // [Mo No Ko Mwo  Nwo Kw Mw Nw (Mi Ni Ki)]
-  tv2c->axis(3)->parallelize(ParallelType::TIDz);
-  tv2c->axis(4)->parallelize(ParallelType::TIDy);
+  //  0   1  2  3   4   5  6  7  8  9  10
+  // [Mo No Ko Kwo Mwo Nwo Mw Nw (Mi Ni Ki)]
+  tv2c->axis(4)->parallelize(ParallelType::TIDz);
+  tv2c->axis(5)->parallelize(ParallelType::TIDy);
 
   // Parallelize
   //  0  1  2   3   4   5  6  7
@@ -1949,8 +1949,8 @@ TEST_F(NVFuserTest, FusionAmpereStridedBatchedMatmulTN_CUDA) {
   scheduler_utils::matmul_utils::scheduleWarpTileWithReduction(tv2c, gemm_tile);
   scheduler_utils::matmul_utils::scheduleWarpTileWithNoReduction(
       tv2, gemm_tile);
-  //           -8   -7  -6 -5 -4 -3 -2 -1
-  // [Mo No Ko Mwo  Nwo Kwo Mw Nw Mi Ni Ki]
+  //           -8  -7  -6  -5 -4 -3 -2 -1
+  // [Mo No Ko Kwo Mwo Nwo Mw Nw Mi Ni Ki]
   tv0cr->computeAt(tv2c, -4);
   tv1cr->computeAt(tv2c, -4);
 
@@ -1994,10 +1994,10 @@ TEST_F(NVFuserTest, FusionAmpereStridedBatchedMatmulTN_CUDA) {
       mma_builder.operand(MmaOptions::Operand::Accumulator).build());
 
   // Parallelize
-  //  0   1  2  3    4   5  6  7  8  9  10
-  // [Mo No Ko Mwo  Nwo Kw Mw Nw (Mi Ni Ki)]
-  tv2c->axis(3)->parallelize(ParallelType::TIDz);
-  tv2c->axis(4)->parallelize(ParallelType::TIDy);
+  //  0   1  2  3   4   5  6  7   8  9  10
+  // [Mo No Ko Kwo Mwo Nwo Mw Nw (Mi Ni Ki)]
+  tv2c->axis(4)->parallelize(ParallelType::TIDz);
+  tv2c->axis(5)->parallelize(ParallelType::TIDy);
 
   // Parallelize
   //  0  1  2   3   4   5  6  7
@@ -2116,8 +2116,8 @@ TEST_F(NVFuserTest, FusionAmpereViewMatmulTN_CUDA) {
   scheduler_utils::matmul_utils::scheduleWarpTileWithReduction(tv2c, gemm_tile);
   scheduler_utils::matmul_utils::scheduleWarpTileWithNoReduction(
       tv2, gemm_tile);
-  //           -8   -7  -6 -5 -4 -3 -2 -1
-  // [Mo No Ko Mwo  Nwo Kwo Mw Nw Mi Ni Ki]
+  //           -8  -7  -6  -5 -4 -3 -2 -1
+  // [Mo No Ko Kwo Mwo Nwo Mw Nw Mi Ni Ki]
   tv0cr->computeAt(tv2c, -4);
   tv1cr->computeAt(tv2c, -4);
 
@@ -2166,10 +2166,10 @@ TEST_F(NVFuserTest, FusionAmpereViewMatmulTN_CUDA) {
   tv0_reshape->computeAt(tv0cw, -2);
 
   // Parallelize
-  //  0   1  2  3    4   5  6  7  8  9  10
-  // [Mo No Ko Mwo  Nwo Kw Mw Nw (Mi Ni Ki)]
-  tv2c->axis(3)->parallelize(ParallelType::TIDz);
-  tv2c->axis(4)->parallelize(ParallelType::TIDy);
+  //  0   1  2  3   4   5  6  7  8  9  10
+  // [Mo No Ko Kwo Mwo Nwo Mw Nw (Mi Ni Ki)]
+  tv2c->axis(4)->parallelize(ParallelType::TIDz);
+  tv2c->axis(5)->parallelize(ParallelType::TIDy);
 
   // Parallelize
   //  0  1  2   3   4   5  6  7
@@ -2199,7 +2199,7 @@ TEST_F(NVFuserTest, FusionAmpereViewMatmulTN_CUDA) {
 }
 
 // Initial test case for in-CTA split K with VoltaMMA
-TEST_F(NVFuserTest, FusionVoltaMatMulTNCrossWarp_CUDA) {
+TEST_F(NVFuserTest, FusionVoltaMatmulTNCrossWarp_CUDA) {
   NVFUSER_TEST_CUDA_ARCH_GUARD(7, 0);
 
   Fusion fusion;
@@ -2361,7 +2361,7 @@ TEST_F(NVFuserTest, FusionVoltaMatMulTNCrossWarp_CUDA) {
 }
 
 // Initial test case for cross-CTA split K with VoltaMMA
-TEST_F(NVFuserTest, FusionVoltaMatMulTNCrossCTA_CUDA) {
+TEST_F(NVFuserTest, FusionVoltaMatmulTNCrossCTA_CUDA) {
   NVFUSER_TEST_CUDA_ARCH_GUARD(7, 0);
 
   Fusion fusion;
@@ -2436,7 +2436,9 @@ TEST_F(NVFuserTest, FusionVoltaMatMulTNCrossCTA_CUDA) {
   // Make warp tile:
   // -------------------------------------------------------------------------
   scheduler_utils::matmul_utils::scheduleWarpTileWithReduction(tv2c, gemm_tile);
-  auto tv2c_rf = tv2c->rFactor({-9, -6, -1});
+  //              -9 -8  -7  -6  -5 -4 -3 -2 -1
+  // [Mo No K2CTA Ko Kwo Mwo Nwo Mw Nw Mi Ni Ki]
+  auto tv2c_rf = tv2c->rFactor({-9, -8, -1});
 
   // tv2c_rf is the actual output of the mma op after
   //  Rfactoring.
@@ -2445,8 +2447,8 @@ TEST_F(NVFuserTest, FusionVoltaMatMulTNCrossCTA_CUDA) {
   scheduler_utils::matmul_utils::scheduleWarpTileWithNoReduction(
       tv2, gemm_tile);
 
-  //           -8   -7  -6 -5 -4 -3 -2 -1
-  // [Mo No Ko Mwo  Nwo Kwo Mw Nw Mi Ni Ki]
+  //                 -8  -7  -6  -5 -4 -3 -2 -1
+  // [Mo No K2CTA Ko Kwo Mwo Nwo Mw Nw Mi Ni Ki]
   tv0cr->computeAt(tv2c_rf, -4);
   tv1cr->computeAt(tv2c_rf, -4);
 
@@ -2496,14 +2498,16 @@ TEST_F(NVFuserTest, FusionVoltaMatMulTNCrossCTA_CUDA) {
   tv0cr->axis(-1)->parallelize(ParallelType::Vectorize);
   tv1cr->axis(-1)->parallelize(ParallelType::Vectorize);
   // Parallelize
-  //  0   1  2  3    4   5  6  7  8  9  10
-  // [Mo No Ko Mwo  Nwo Kw Mw Nw (Mi Ni Ki)]
+  //  0   1   2   3   4   5  6  7   8  9  10 11
+  // [Mo No K2CTA Ko Kwo Mwo Nwo Mw Nw Mi Ni Ki]
   tv2c_rf->axis(0)->parallelize(ParallelType::BIDx);
   tv2c_rf->axis(1)->parallelize(ParallelType::BIDy);
   tv2c_rf->axis(2)->parallelize(ParallelType::BIDz);
-  tv2c_rf->axis(4)->parallelize(ParallelType::TIDz);
-  tv2c_rf->axis(5)->parallelize(ParallelType::TIDy);
+  tv2c_rf->axis(5)->parallelize(ParallelType::TIDz);
+  tv2c_rf->axis(6)->parallelize(ParallelType::TIDy);
 
+  //  0   1   2    3   4  5  6  7  8
+  // [Mo No K2CTA Mwo Nwo Mw Nw Mi Ni]
   tv2c->axis(0)->parallelize(ParallelType::BIDx);
   tv2c->axis(1)->parallelize(ParallelType::BIDy);
   tv2c->axis(2)->parallelize(ParallelType::BIDz);
@@ -2605,8 +2609,8 @@ TEST_F(NVFuserTest, FusionAmpereMatmulTNSwizzled_CUDA) {
   scheduler_utils::matmul_utils::scheduleWarpTileWithReduction(tv2c, gemm_tile);
   scheduler_utils::matmul_utils::scheduleWarpTileWithNoReduction(
       tv2, gemm_tile);
-  //           -8   -7  -6 -5 -4 -3 -2 -1
-  // [Mo No Ko Mwo  Nwo Kwo Mw Nw Mi Ni Ki]
+  //           -8   -7 -6 -5 -4 -3 -2 -1
+  // [Mo No Ko Kwo Mwo Nwo Mw Nw Mi Ni Ki]
   tv0cr->computeAt(tv2c, -4);
   tv1cr->computeAt(tv2c, -4);
 
@@ -2675,10 +2679,10 @@ TEST_F(NVFuserTest, FusionAmpereMatmulTNSwizzled_CUDA) {
       mma_builder.operand(MmaOptions::Operand::Accumulator).build());
 
   // Parallelize
-  //  0   1  2  3    4   5  6  7  8  9  10
-  // [Mo No Ko Mwo  Nwo Kw Mw Nw (Mi Ni Ki)]
-  tv2c->axis(3)->parallelize(ParallelType::TIDz);
-  tv2c->axis(4)->parallelize(ParallelType::TIDy);
+  //  0   1  2  3   4   5  6   7  8  9  10
+  // [Mo No Ko Kwo Mwo Nwo Mw Nw (Mi Ni Ki)]
+  tv2c->axis(4)->parallelize(ParallelType::TIDz);
+  tv2c->axis(5)->parallelize(ParallelType::TIDy);
 
   // Parallelize
   //  0  1  2   3   4   5  6  7

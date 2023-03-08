@@ -5,6 +5,7 @@ from functools import partial
 import re
 from typing import List
 import unittest
+from itertools import permutations
 
 import torch
 from torch.testing._internal.common_utils import run_tests, TEST_WITH_ROCM, TestCase
@@ -14,7 +15,7 @@ import torch._prims as prims
 
 # Will only create the nvfuser module if CUDA is available
 try:
-    from nvfuser import FusionCache, FusionDefinition, DataType, version
+    from nvfuser import FusionCache, FusionDefinition, DataType, version, compute_contiguity
     from nvfuser.pytorch_utils import torch_dtype_to_nvfuser_dtype
 except ImportError:
     pass
@@ -647,10 +648,10 @@ class TestNvFuserFrontend(TestCase):
                 symbolic_sizes=[-1, -1, -1], contiguous=[True, True, True]
             )
             t1 = fd.define_tensor(
-                symbolic_sizes=[-1, 1, -1], contiguous=[True, True, True]
+                symbolic_sizes=[-1, 1, -1], contiguous=[True, True]
             )
             t2 = fd.define_tensor(
-                symbolic_sizes=[-1, 1, -1], contiguous=[True, True, True]
+                symbolic_sizes=[-1, 1, -1], contiguous=[True, True]
             )
             t0_sizes = fd.ops.tensor_sizes(t0)
 
@@ -1322,6 +1323,15 @@ class TestNvFuserFrontend(TestCase):
 
         self.assertEqual(nvfout[0], torch_out)
 
+    def test_compute_contiguity(self):
+        sizes = [2, 1, 3, 1, 4, 5, 6]
+        strides = [80, 30, 30, 456456465465, 0, 6, 1]
+        contiguity = [False, True, True, True]
+        self.assertEqual(compute_contiguity(sizes, strides), contiguity)
+        strides = [800, 300, 300, 456456465465, 0, 60, 10]
+        contiguity = [False, True, True, False]
+        self.assertEqual(compute_contiguity(sizes, strides), contiguity)
+
     def test_prod(self) :
         inputs = [
             torch.ones(2, 4, 8, device='cuda'),
@@ -1352,6 +1362,29 @@ class TestNvFuserFrontend(TestCase):
 
         for n, e in zip(nvf_out, eager_outs):
             self.assertEqual(n, e)
+
+    def test_output_stride_order(self) :
+        inputs = [
+            torch.range(0, 119).reshape(2, 3, 4, 5).cuda().float(),
+        ]
+        eager_out = inputs[0] + 3.0
+
+        for perm in permutations(range(4), 4):
+
+            def fusion_func(fd: FusionDefinition) :
+                t0 = fd.from_pytorch(inputs[0])
+                c0 = fd.define_constant(3.0)
+                t1 = fd.ops.add(t0, c0)
+                fd.add_output(t1, perm)
+
+            nvf_out, _ = self.exec_nvfuser(fusion_func, inputs)
+            self.assertEqual(eager_out, nvf_out[0])
+
+            nvf_stride = nvf_out[0].stride()
+            sorted_stride = list(nvf_stride)
+            for idx, axis in enumerate(perm):
+                sorted_stride[axis] = nvf_stride[idx]
+            self.assertTrue(sorted(sorted_stride, reverse=True) == sorted_stride)
 
 
 if __name__ == '__main__':

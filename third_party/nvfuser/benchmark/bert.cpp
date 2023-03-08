@@ -349,13 +349,13 @@ static void setupBiasDropoutAddLayernormBwd1(Fusion* fusion, DataType dtype) {
   TensorView* tv3 = TensorViewBuilder()
                         .ndims(3)
                         .dtype(dtype)
-                        .contiguity({true, true, true})
+                        .contiguity({true, true})
                         .shape({-1, -1, 1})
                         .build();
   TensorView* tv4 = TensorViewBuilder()
                         .ndims(3)
                         .dtype(dtype)
-                        .contiguity({true, true, true})
+                        .contiguity({true, true})
                         .shape({-1, -1, 1})
                         .build();
 
@@ -457,7 +457,7 @@ static void setupBiasDropoutAddLayernormBwd2(Fusion* fusion, DataType dtype) {
   TensorView* tv4 = TensorViewBuilder()
                         .ndims(3)
                         .dtype(dtype)
-                        .contiguity({true, true, true})
+                        .contiguity({true, true})
                         .shape({-1, -1, 1})
                         .build();
   TensorView* tv5 = makeContigTensor(1, dtype);

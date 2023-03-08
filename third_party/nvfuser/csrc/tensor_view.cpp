@@ -44,27 +44,10 @@ TensorView::TensorView(
   TORCH_INTERNAL_ASSERT(
       !container()->isA<kir::Kernel>(),
       "Function invalid for kernel container.");
-  std::vector<IterDomain*> sizes;
 
   TORCH_CHECK(
       tensor_type->dim().has_value(), "Requires static rank for Tensor");
 
-  for (const auto i : c10::irange(tensor_type->dim().value())) {
-    if (tensor_type->sizes()[i].has_value() &&
-        tensor_type->sizes()[i].value() == 1) {
-      // If size is known to be 1, assuem it needs to be broadcasted.
-      sizes.push_back(
-          IterDomainBuilder(
-              passkey.ir_container_->zeroVal(), passkey.ir_container_->oneVal())
-              .iter_type(IterType::Broadcast)
-              .build());
-    } else {
-      sizes.push_back(
-          IterDomainBuilder(
-              passkey.ir_container_->zeroVal(), IrBuilder::create<Int>())
-              .build());
-    }
-  }
   // [ Note -- stride_properties in tensor type ]
   //
   // `stride_properties()` returns a vector<optional<Stride>>, while
@@ -87,25 +70,86 @@ TensorView::TensorView(
   // * note that memory-dense means different things depending on the order of
   // the dimension. checkout `TensorType::computeStrideProps` for details
 
+  std::vector<bool> is_stride_zero(*tensor_type->dim(), false);
+  std::vector<bool> is_size_one(*tensor_type->dim(), false);
+  for (const auto i : c10::irange(tensor_type->dim().value())) {
+    is_size_one.at(i) = tensor_type->sizes()[i].has_value() &&
+        tensor_type->sizes()[i].value() == 1;
+    const auto& stride_property_i = tensor_type->stride_properties()[i];
+    if (stride_property_i.has_value() &&
+        stride_property_i->stride_index_.has_value() &&
+        stride_property_i->stride_.has_value()) {
+      is_stride_zero.at(*stride_property_i->stride_index_) =
+          (stride_property_i->stride_ == 0u);
+    }
+  }
+
+  std::vector<IterDomain*> sizes;
+  sizes.reserve(*tensor_type->dim());
+
+  for (const auto i : c10::irange(tensor_type->dim().value())) {
+    if (is_stride_zero.at(i) || is_size_one.at(i)) {
+      // If stride is known to be 0, assuem it needs to be broadcasted.
+      auto builder =
+          IterDomainBuilder(
+              passkey.ir_container_->zeroVal(), passkey.ir_container_->oneVal())
+              .iter_type(IterType::Broadcast);
+      if (is_size_one.at(i)) {
+        sizes.push_back(builder.build());
+      } else {
+        // if size is not 1, need to expand
+        sizes.push_back(
+            builder.expanded_extent(IrBuilder::create<Int>()).build());
+      }
+    } else {
+      sizes.push_back(
+          IterDomainBuilder(
+              passkey.ir_container_->zeroVal(), IrBuilder::create<Int>())
+              .build());
+    }
+  }
+
   // default to non_contiguous;
-  std::vector<bool> contig_info(tensor_type->dim().value(), false);
+  std::vector<bool> contig_info(
+      TensorDomain::noBroadcasts(sizes).size(), false);
+
+  int64_t inner_most_non_broadcast = tensor_type->dim().value() - 1;
+  while (inner_most_non_broadcast >= 0) {
+    if (sizes.at(inner_most_non_broadcast)->isBroadcast()) {
+      inner_most_non_broadcast--;
+    } else {
+      break;
+    }
+  }
+  // if all broadcast, then inner_most_non_broadcast == -1
+
+  auto full2nob = ir_utils::fullToNoBroadcastMap(sizes);
 
   // we iterate through stride_index_, which goes from fastest changing
   // dimension to slowest, instead of iterating through sizes. This allows
   // easier contiguity check;
+  bool found_innermost_non_broadcast = false;
   for (const auto i : c10::irange(tensor_type->dim().value())) {
     // if we don't have contiguous dimension at current stride index, don't
     // bother;
     const auto& stride_property_i = tensor_type->stride_properties()[i];
+    size_t index;
     if (stride_property_i.has_value() &&
-        stride_property_i->stride_index_.has_value() &&
-        stride_property_i->contiguous_.has_value() &&
+        stride_property_i->stride_index_.has_value()) {
+      index = stride_property_i->stride_index_.value();
+    } else {
+      continue;
+    }
+    if (sizes.at(index)->isBroadcast()) {
+      continue;
+    }
+    if (stride_property_i->contiguous_.has_value() &&
         stride_property_i->contiguous_.value() == true) {
-      const size_t index = stride_property_i->stride_index_.value();
-      if (i == 0) {
-        // mark fastest changing dimension collapsible only when it's the last
-        // dim;
-        contig_info[index] = (index == tensor_type->dim().value() - 1);
+      if (!found_innermost_non_broadcast) {
+        // mark fastest changing dimension collapsible only when it's
+        // "innermost"
+        contig_info.at(full2nob.at(index)) =
+            ((int64_t)index == inner_most_non_broadcast);
       } else {
         // check the neighboring faster dimension, collapse if it is considered
         // as inner dimension per stride_index
@@ -115,14 +159,12 @@ TensorView::TensorView(
         if (inner_index_opt.has_value() &&
             inner_index_opt.value() == (index + 1)) {
           // collapse if inner dimension has non-broadcasted strides
-          auto inner_stride_opt =
-              tensor_type->stride_properties()[static_cast<int>(i) - 1]
-                  ->stride_;
-          contig_info[index] =
-              inner_stride_opt.has_value() && inner_stride_opt.value() != 0;
+          contig_info.at(full2nob.at(index)) =
+              !sizes.at(index + 1)->isBroadcast();
         }
       }
     }
+    found_innermost_non_broadcast = true;
   }
 
   domain_ = IrBuilder::create<TensorDomain>(sizes, contig_info);
@@ -232,7 +274,8 @@ void TensorView::convertRfactorToRootDomain() {
         }
 
         TORCH_INTERNAL_ASSERT(
-            new_root_domain.size() == domain()->contiguity().size());
+            TensorDomain::noBroadcasts(new_root_domain).size() ==
+            domain()->contiguity().size());
         setDomain(IrBuilder::create<TensorDomain>(
             container(), new_root_domain, domain()->contiguity()));
       };
@@ -1395,10 +1438,17 @@ void TensorView::clearReductionIterDomains() {
 
   std::vector<IterDomain*> new_root;
   std::vector<bool> new_contig;
+  int64_t no_broadcast_i = 0;
   for (const auto i : c10::irange(getRootDomain().size())) {
-    if (!getRootDomain()[i]->isReduction()) {
-      new_root.push_back(getRootDomain()[i]);
-      new_contig.push_back(domain()->contiguity()[i]);
+    auto root_i = getRootDomain().at(i);
+    if (!root_i->isReduction()) {
+      new_root.push_back(root_i);
+      if (!root_i->isBroadcast()) {
+        new_contig.push_back(domain()->contiguity().at(no_broadcast_i));
+      }
+    }
+    if (!root_i->isBroadcast()) {
+      no_broadcast_i++;
     }
   }
 
@@ -1465,10 +1515,6 @@ TensorViewBuilder& TensorViewBuilder::dtype(DataType dtype) {
 
 TensorViewBuilder& TensorViewBuilder::contiguity(std::vector<bool> contiguity) {
   TORCH_CHECK(contiguity_.empty(), "Attempting to reset contiguity");
-  if (!contiguity.empty()) {
-    TORCH_CHECK(ndims_ == 0 || ndims_ == contiguity.size());
-    ndims_ = contiguity.size();
-  }
   contiguity_ = std::move(contiguity);
   return *this;
 }
@@ -1522,6 +1568,7 @@ TensorViewBuilder& TensorViewBuilder::expanded(std::vector<bool> expanded) {
 TensorView* TensorViewBuilder::build() const {
   // Build the domain
   std::vector<IterDomain*> domain(ndims_, nullptr);
+  size_t non_broadcasting_dims = 0;
   for (const auto i : c10::irange(ndims_)) {
     bool is_expanded = false;
     Val* extent = nullptr;
@@ -1550,6 +1597,8 @@ TensorView* TensorViewBuilder::build() const {
     IterDomainBuilder builder(FusionGuard::getCurFusion()->zeroVal(), extent);
     if (extent->isOneInt()) {
       builder.iter_type(IterType::Broadcast);
+    } else {
+      non_broadcasting_dims++;
     }
     if (expanded_extent != nullptr) {
       builder.expanded_extent(expanded_extent);
@@ -1557,16 +1606,9 @@ TensorView* TensorViewBuilder::build() const {
     domain[i] = builder.build();
   }
 
-  // The expanded dim and the dim before it can not be contiguous
-  if (!contiguity_.empty() && !expanded_.empty()) {
-    for (const auto i : c10::irange(ndims_)) {
-      if (contiguity_[i]) {
-        TORCH_CHECK(
-            !expanded_[i] && (i == ndims_ - 1 || !expanded_[i + 1]),
-            "The expanded dim and the dim before it can not be contiguous.");
-      }
-    }
-  }
+  TORCH_CHECK(
+      contiguity_.empty() || contiguity_.size() == non_broadcasting_dims,
+      "The size of contiguity must equal to the number of non-broadcasting IterDomains");
 
   // Create the final TensorView
   return IrBuilder::create<TensorView>(

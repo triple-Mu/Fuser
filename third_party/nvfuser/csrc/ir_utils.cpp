@@ -6,6 +6,7 @@
 #include <lower_utils.h>
 #include <ops/arith.h>
 
+#include <limits>
 #include <set>
 
 namespace nvfuser {
@@ -797,6 +798,18 @@ std::string varName(const Val* val) {
   }
   name << val->name();
   return name.str();
+}
+
+std::vector<size_t> fullToNoBroadcastMap(const std::vector<IterDomain*> ids) {
+  std::vector<size_t> full2nob_map(
+      ids.size(), std::numeric_limits<size_t>::max());
+  size_t no_broadcast_i = 0;
+  for (const auto i : c10::irange(ids.size())) {
+    if (!ids.at(i)->isBroadcast()) {
+      full2nob_map.at(i) = no_broadcast_i++;
+    }
+  }
+  return full2nob_map;
 }
 
 bool hasResizedRfactor(const TensorView* tv) {

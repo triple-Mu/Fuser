@@ -273,10 +273,12 @@ TensorView* scatter(
 // TENSOR FACTORIES
 TensorView* rand(const std::vector<Val*>& shape, DataType dtype) {
   auto n = shape.size();
+  auto n_nob = std::count_if(
+      shape.begin(), shape.end(), [](auto x) { return !x->isOneInt(); });
   auto out = TensorViewBuilder()
                  .ndims(n)
                  .dtype(dtype)
-                 .contiguity(std::vector<bool>(n, true))
+                 .contiguity(std::vector<bool>(n_nob, true))
                  .shape(shape)
                  .build();
   IrBuilder::create<RNGOp>(RNGOpType::Uniform, out, dtype);
@@ -290,10 +292,12 @@ TensorView* uniform(
     Val* high,
     DataType dtype) {
   auto n = shape.size();
+  auto n_nob = std::count_if(
+      shape.begin(), shape.end(), [](auto x) { return !x->isOneInt(); });
   auto out = TensorViewBuilder()
                  .ndims(n)
                  .dtype(dtype)
-                 .contiguity(std::vector<bool>(n, true))
+                 .contiguity(std::vector<bool>(n_nob, true))
                  .shape(shape)
                  .build();
   IrBuilder::create<RNGOp>(
@@ -307,10 +311,12 @@ TensorView* normal(
     Val* std,
     DataType dtype) {
   auto n = shape.size();
+  auto n_nob = std::count_if(
+      shape.begin(), shape.end(), [](auto x) { return !x->isOneInt(); });
   auto out = TensorViewBuilder()
                  .ndims(n)
                  .dtype(dtype)
-                 .contiguity(std::vector<bool>(n, true))
+                 .contiguity(std::vector<bool>(n_nob, true))
                  .shape(shape)
                  .build();
   IrBuilder::create<RNGOp>(
@@ -320,10 +326,12 @@ TensorView* normal(
 
 TensorView* randn(const std::vector<Val*>& shape, DataType dtype) {
   auto n = shape.size();
+  auto n_nob = std::count_if(
+      shape.begin(), shape.end(), [](auto x) { return !x->isOneInt(); });
   auto out = TensorViewBuilder()
                  .ndims(n)
                  .dtype(dtype)
-                 .contiguity(std::vector<bool>(n, true))
+                 .contiguity(std::vector<bool>(n_nob, true))
                  .shape(shape)
                  .build();
   IrBuilder::create<RNGOp>(RNGOpType::NormalStandard, out, dtype);
@@ -374,10 +382,12 @@ TensorView* full(
     fill_value = castOp(dtype, fill_value);
   }
   auto n = shape.size();
+  auto n_nob = std::count_if(
+      shape.begin(), shape.end(), [](auto x) { return !x->isOneInt(); });
   auto out = TensorViewBuilder()
                  .ndims(n)
                  .dtype(dtype)
-                 .contiguity(std::vector<bool>(n, true))
+                 .contiguity(std::vector<bool>(n_nob, true))
                  .shape(shape)
                  .build();
   IrBuilder::create<FullOp>(out, fill_value);
@@ -459,10 +469,12 @@ TensorView* iota(Val* length, Val* start, Val* step, DataType dtype) {
   if (step->getDataType() != dtype) {
     step = castOp(dtype, step);
   }
+  auto contiguity =
+      length->isOneInt() ? std::vector<bool>{} : std::vector<bool>{true};
   auto out = TensorViewBuilder()
                  .ndims(1)
                  .dtype(dtype)
-                 .contiguity({true})
+                 .contiguity(contiguity)
                  .shape({length})
                  .build();
   IrBuilder::create<IotaOp>(out, length, start, step);
@@ -523,10 +535,16 @@ TensorView* arange(Val* start, Val* end, Val* step, DataType dtype) {
 TensorView* eye(Val* rows, Val* cols, DataType dtype) {
   TORCH_CHECK(rows->getDataType() == DataType::Int, "rows must have type Int");
   TORCH_CHECK(cols->getDataType() == DataType::Int, "cols must have type Int");
+  std::vector<bool> contiguity;
+  for (auto len : {rows, cols}) {
+    if (!len->isOneInt()) {
+      contiguity.push_back(true);
+    }
+  }
   auto out = TensorViewBuilder()
                  .ndims(2)
                  .dtype(dtype)
-                 .contiguity({true, true})
+                 .contiguity(contiguity)
                  .shape(std::vector<Val*>{rows, cols})
                  .build();
   IrBuilder::create<EyeOp>(out, dtype);

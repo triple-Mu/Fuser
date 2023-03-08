@@ -41,6 +41,10 @@ template <typename T>
 void Val::dispatch(T handler, Val* val) {
   switch (*(val->getValType())) {
     case ValType::Scalar:
+      if (std::holds_alternative<PointerOf>(val->getDataType()->type)) {
+        ptr(handler)->handle(val->as<Int>());
+        return;
+      }
       switch (std::get<PrimDataType>(val->getDataType()->type)) {
         case DataType::Bool:
           ptr(handler)->handle(val->as<Bool>());
@@ -83,6 +87,9 @@ void Val::dispatch(T handler, Val* val) {
       return;
     case ValType::TensorIndex:
       ptr(handler)->handle(val->as<kir::TensorIndex>());
+      return;
+    case ValType::AggregateVal:
+      ptr(handler)->handle(val->as<AggregateVal>());
       return;
     default:
       break;
@@ -289,8 +296,16 @@ void Expr::dispatch(T handler, Expr* expr) {
     ptr(handler)->handle(expr->as<kir::AllocateFusedReduction>());
     return;
   }
-  if (expr->isStrictlyA<kir::SMemAddress>()) {
-    ptr(handler)->handle(expr->as<kir::SMemAddress>());
+  if (expr->isStrictlyA<kir::BaseAddress>()) {
+    ptr(handler)->handle(expr->as<kir::BaseAddress>());
+    return;
+  }
+  if (expr->isStrictlyA<AggregateExpr>()) {
+    ptr(handler)->handle(expr->as<AggregateExpr>());
+    return;
+  }
+  if (expr->isStrictlyA<SendRecv>()) {
+    ptr(handler)->handle(expr->as<SendRecv>());
     return;
   }
   TORCH_INTERNAL_ASSERT(false, "Unknown exprtype in dispatch!");
@@ -310,6 +325,10 @@ template <typename T>
 void Val::constDispatch(T handler, const Val* val) {
   switch (*(val->getValType())) {
     case ValType::Scalar:
+      if (std::holds_alternative<PointerOf>(val->getDataType()->type)) {
+        ptr(handler)->handle(val->as<Int>());
+        return;
+      }
       switch (std::get<PrimDataType>(val->getDataType()->type)) {
         case DataType::Bool:
           ptr(handler)->handle(val->as<Bool>());
@@ -352,6 +371,9 @@ void Val::constDispatch(T handler, const Val* val) {
       return;
     case ValType::TensorIndex:
       ptr(handler)->handle(val->as<kir::TensorIndex>());
+      return;
+    case ValType::AggregateVal:
+      ptr(handler)->handle(val->as<AggregateVal>());
       return;
     case ValType::Attribute:
       // Attribute Val is just a wrapper for non-IR data, so there is nothing to
@@ -562,8 +584,16 @@ void Expr::constDispatch(T handler, const Expr* expr) {
     ptr(handler)->handle(expr->as<kir::AllocateFusedReduction>());
     return;
   }
-  if (expr->isStrictlyA<kir::SMemAddress>()) {
-    ptr(handler)->handle(expr->as<kir::SMemAddress>());
+  if (expr->isStrictlyA<kir::BaseAddress>()) {
+    ptr(handler)->handle(expr->as<kir::BaseAddress>());
+    return;
+  }
+  if (expr->isStrictlyA<AggregateExpr>()) {
+    ptr(handler)->handle(expr->as<AggregateExpr>());
+    return;
+  }
+  if (expr->isStrictlyA<SendRecv>()) {
+    ptr(handler)->handle(expr->as<SendRecv>());
     return;
   }
   TORCH_INTERNAL_ASSERT(false, "Unknown exprtype in dispatch!");
@@ -594,6 +624,10 @@ template <typename T>
 void Val::mutatorDispatch(T mutator, Val* val) {
   switch (*(val->getValType())) {
     case ValType::Scalar:
+      if (std::holds_alternative<PointerOf>(val->getDataType()->type)) {
+        ptr(mutator)->mutate(val->as<Int>());
+        return;
+      }
       switch (std::get<PrimDataType>(val->getDataType()->type)) {
         case DataType::Bool:
           ptr(mutator)->mutate(val->as<Bool>());
@@ -636,6 +670,9 @@ void Val::mutatorDispatch(T mutator, Val* val) {
       return;
     case ValType::TensorIndex:
       ptr(mutator)->mutate(val->as<kir::TensorIndex>());
+      return;
+    case ValType::AggregateVal:
+      ptr(mutator)->mutate(val->as<AggregateVal>());
       return;
     case ValType::Attribute:
       TORCH_INTERNAL_ASSERT(
@@ -782,6 +819,10 @@ void OptOutConstDispatch::handle(const kir::Predicate* stmt) {
   unhandled(stmt);
 }
 void OptOutConstDispatch::handle(const kir::TensorIndex* stmt) {
+  unhandled(stmt);
+}
+
+void OptOutConstDispatch::handle(const AggregateVal* stmt) {
   unhandled(stmt);
 }
 
@@ -932,7 +973,14 @@ void OptOutConstDispatch::handle(const kir::VectorizedWelfordOp* stmt) {
 void OptOutConstDispatch::handle(const kir::AllocateFusedReduction* stmt) {
   unhandled(stmt);
 }
-void OptOutConstDispatch::handle(const kir::SMemAddress* stmt) {
+void OptOutConstDispatch::handle(const kir::BaseAddress* stmt) {
+  unhandled(stmt);
+}
+
+void OptOutConstDispatch::handle(const AggregateExpr* stmt) {
+  unhandled(stmt);
+}
+void OptOutConstDispatch::handle(const SendRecv* stmt) {
   unhandled(stmt);
 }
 
@@ -968,6 +1016,10 @@ void OptOutDispatch::handle(kir::Predicate* stmt) {
   unhandled(stmt);
 }
 void OptOutDispatch::handle(kir::TensorIndex* stmt) {
+  unhandled(stmt);
+}
+
+void OptOutDispatch::handle(AggregateVal* stmt) {
   unhandled(stmt);
 }
 
@@ -1118,7 +1170,13 @@ void OptOutDispatch::handle(kir::VectorizedWelfordOp* stmt) {
 void OptOutDispatch::handle(kir::AllocateFusedReduction* stmt) {
   unhandled(stmt);
 }
-void OptOutDispatch::handle(kir::SMemAddress* stmt) {
+void OptOutDispatch::handle(kir::BaseAddress* stmt) {
+  unhandled(stmt);
+}
+void OptOutDispatch::handle(AggregateExpr* stmt) {
+  unhandled(stmt);
+}
+void OptOutDispatch::handle(SendRecv* stmt) {
   unhandled(stmt);
 }
 

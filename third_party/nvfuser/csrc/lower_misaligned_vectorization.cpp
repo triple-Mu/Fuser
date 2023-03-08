@@ -485,12 +485,17 @@ class MisalignedVectorizationModifier : public kir::ExprMutator {
     const auto& consumer_contig = consumer_tv->domain()->contiguity();
     const auto& producer_contig = producer_tv->domain()->contiguity();
 
-    auto producer_root_domain = producer_tv->getMaybeRFactorDomain();
+    const auto& producer_root_domain = producer_tv->getMaybeRFactorDomain();
+    const auto& consumer_root_domain = consumer_tv->getMaybeRFactorDomain();
+
+    auto consumer_full2nob_map =
+        ir_utils::fullToNoBroadcastMap(consumer_root_domain);
+    auto producer_full2nob_map =
+        ir_utils::fullToNoBroadcastMap(producer_root_domain);
 
     // Calculate extent of merged root domains
     Val* extent = nullptr;
-    auto consumer_root_idx =
-        int(consumer_tv->getMaybeRFactorDomain().size()) - 1;
+    auto consumer_root_idx = int(consumer_root_domain.size()) - 1;
     for (int i = int(producer_root_domain.size()) - 1; i >= 0; --i) {
       auto producer_root_id = producer_root_domain.at(i);
 
@@ -532,7 +537,8 @@ class MisalignedVectorizationModifier : public kir::ExprMutator {
 
       // If it's not contiguous, extending the vectorization domain
       // further is not possible
-      if (!(producer_contig.at(i) && consumer_contig.at(consumer_root_idx))) {
+      if (!(producer_contig.at(producer_full2nob_map.at(i)) &&
+            consumer_contig.at(producer_full2nob_map.at(consumer_root_idx)))) {
         break;
       }
 

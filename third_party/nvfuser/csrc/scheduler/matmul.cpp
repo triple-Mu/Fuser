@@ -282,12 +282,12 @@ void scheduleMatmul(
   acr->axis(-1)->parallelize(ParallelType::Vectorize);
   bcr->axis(-1)->parallelize(ParallelType::Vectorize);
 
-  //  0   1  2  3    4   5  6  7  8  9  10
-  // [Mo No Ko Mwo  Nwo Kw Mw Nw (Mi Ni Ki)]
+  //  0   1  2  3   4   5   6  7  8  9  10
+  // [Mo No Ko Kwo Mwo Nwo Mw Nw (Mi Ni Ki)]
   cc->axis(0)->parallelize(ParallelType::BIDx);
   cc->axis(1)->parallelize(ParallelType::BIDy);
-  cc->axis(3)->parallelize(ParallelType::TIDz);
-  cc->axis(4)->parallelize(ParallelType::TIDy);
+  cc->axis(4)->parallelize(ParallelType::TIDz);
+  cc->axis(5)->parallelize(ParallelType::TIDy);
 
   // Propagate mma output swizzle and parallelization down the DAG
   if (params.double_buffer_options.double_buffer_smem_write) {
@@ -318,6 +318,11 @@ void scheduleMatmul(
       scheduler_utils::BoundedDirectionalTransformPropagator::Options()
           .propagateParallelType()
           .propagateToBoundary());
+
+  if (params.double_buffer_options.double_buffer_smem_read &&
+      params.double_buffer_options.double_buffer_smem_write) {
+    scheduler_utils::rotateLoop(cc, 2, {acr, bcr});
+  }
 }
 
 } // namespace nvfuser

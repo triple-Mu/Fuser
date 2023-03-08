@@ -355,18 +355,20 @@ class Index {
   // Consumer = Producer
   // i.e. T0 = T1... -> T0 is the consumer, T1 is the producer
   // Producer indexing dispatch
-  // The argument `cvta_smem_address` specifies whether to use `cvta` ptx to
-  // convert shared memory address to unsigned int for indexing. This argument
-  // is effective only if the indexed tensor is a shared memory tensor. On other
-  // memory type, this argument will be ignored. Search `toSmem` in the codebase
-  // for additional information.
+  // The argument `generate_pointer` specifies whether to generate pointer for
+  // the tensor. If global tensor, then generate T1.data. If shared memory
+  // tensor, then use `cvta` ptx to convert shared memory address to unsigned
+  // int for indexing. Search `toSmem` in the codebase for additional
+  // information. This argument is effective only if the indexed tensor is a
+  // shared memory or global tensor. On other memory type, this argument will
+  // cause an error.
   static kir::TensorIndex* getProducerIndex(
       TensorView* producer,
       const TensorView* consumer,
       const std::vector<kir::ForLoop*>& loops,
       const std::unordered_set<kir::ForLoop*>& rotated_loops,
       const std::unordered_map<IterDomain*, Val*>& override_index = {},
-      bool cvta_smem_address = false);
+      bool generate_pointer = false);
 
   // Consumer index dispatch
   static kir::TensorIndex* getConsumerIndex(
@@ -374,7 +376,7 @@ class Index {
       const std::vector<kir::ForLoop*>& loops,
       const std::unordered_set<kir::ForLoop*>& rotated_loops,
       const std::unordered_map<int, Val*>& override_index = {},
-      bool cvta_smem_address = false);
+      bool generate_pointer = false);
 
   //! Returns a vector of strided indices mapped onto the (rfactor)
   //! root domain of a producer tensor. The size of the returned
@@ -386,7 +388,7 @@ class Index {
       const std::vector<kir::ForLoop*>& loops,
       const std::unordered_set<kir::ForLoop*>& rotated_loops,
       const std::unordered_map<IterDomain*, Val*>& override_index = {},
-      bool cvta_smem_address = false);
+      bool generate_pointer = false);
 
   //! Returns a vector of strided indices mapped onto the (rfactor)
   //! root domain of a consumer tensor. The size of the returned
@@ -397,7 +399,7 @@ class Index {
       const std::vector<kir::ForLoop*>& loops,
       const std::unordered_set<kir::ForLoop*>& rotated_loops,
       const std::unordered_map<int, Val*>& override_index = {},
-      bool cvta_smem_address = false);
+      bool generate_pointer = false);
 
   //! Returns the logical index linearized from a multi-dimension address into a
   //! linear memory address a consumer tensor. The returned index is intended to
