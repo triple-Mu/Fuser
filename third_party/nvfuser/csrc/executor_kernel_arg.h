@@ -284,37 +284,6 @@ class TORCH_CUDA_CU_API KernelArgumentHolder {
     return index_mode_;
   }
 
-  // Allows the user to specify a larger index mode than reqd
-  void setIndexMode(KernelIndexMode mode) {
-    // index_mode_ is deduced on args. We won't allow setting it to a smaller
-    // size than required
-    auto smallest = getSmallestIndexModeRequired();
-
-    // well, turns out index type was too small
-    if (smallest == KernelIndexMode::INT64 &&
-        index_mode_ == KernelIndexMode::INT32) {
-      TORCH_INTERNAL_ASSERT(
-          false,
-          "index_mode_ is INT32, but given the state of KernelArgumentHolder it should have already been INT64.");
-    }
-
-    // we can't narrow down index type
-    if (mode == KernelIndexMode::INT32 && smallest == KernelIndexMode::INT64) {
-      return;
-    }
-
-    // no-op
-    if (mode == index_mode_) {
-      return;
-    }
-
-    // Increasing or decreasing index size.
-    if (mode == smallest || mode == KernelIndexMode::INT64) {
-      index_mode_ = mode;
-      updateTensorIndexModes();
-    }
-  }
-
   explicit KernelArgumentHolder(KernelIndexMode index_mode)
       : index_mode_(index_mode) {}
 
@@ -362,12 +331,6 @@ class TORCH_CUDA_CU_API KernelArgumentHolder {
   const ArgAbstract* back() const {
     return arguments_.back().get();
   }
-
-  // Goes through all tensors and changes index mode
-  void updateTensorIndexModes();
-
-  // Checks all tensors held to find the smallest index mode required.
-  KernelIndexMode getSmallestIndexModeRequired() const;
 
   void appendPhiloxRNGSeed(uint64_t rand_offset);
 

@@ -229,7 +229,9 @@ void FusionExecutor::compileFusion(
   // TODO: refactor the options_ passed through
   options_.device = c10::Device(c10::DeviceType::CUDA, args.getDeviceIndex());
   options_.index_mode = args.getIndexMode();
-  compile_params.index_type = DataType::Index;
+  compile_params.index_type =
+      (options_.index_mode == KernelIndexMode::INT64 ? DataType::Int
+                                                     : DataType::Int32);
   c10::DeviceGuard dg(options_.device);
 
   TORCH_INTERNAL_ASSERT(
@@ -1102,68 +1104,11 @@ std::vector<at::Tensor> FusionExecutor::runFusion(
     launch_params_ =
         computeLaunchParams(launch_constraints, expr_eval, warp_size_);
 
-    auto alias_indices_entry =
-        executor_utils::caching::ExecutorCompileTimeEntry<
-            executor_utils::caching::InputAliasIndices>(
-            compileTimeDataCache(), [&]() {
-              return std::make_unique<std::vector<std::pair<int, int>>>(
-                  fusion_->getInputAliasIndices());
-            });
-
-    auto& alias_indices = alias_indices_entry.get();
-
-    // We need to push all of the outputs to the KernelArgumentHolder before
-    // checking at the Indexing Type. NOLINTNEXTLINE(bugprone-branch-clone)
-    if (outputs.empty()) {
-      auto output_alias_indices_entry =
-          executor_utils::caching::ExecutorCompileTimeEntry<
-              executor_utils::caching::OutputAliasIndices>(
-              compileTimeDataCache(), [&]() {
-                return std::make_unique<std::unordered_set<int>>(
-                    fusion_->getOutputAliasIndices());
-              });
-
-      auto& output_alias_indices = output_alias_indices_entry.get();
-
-      allocated_outputs = allocOutputs(args, expr_eval, output_alias_indices);
-
-      for (const auto& entry : alias_indices) {
-        auto aliased_output_index = entry.first;
-        auto aliased_input_index = entry.second;
-        auto tensor_arg_abstract =
-            dynamic_cast<const TensorArgAbstract*>(args[aliased_input_index]);
-        TORCH_INTERNAL_ASSERT(
-            tensor_arg_abstract, "alias io only supports tensor");
-        allocated_outputs[aliased_output_index] =
-            tensor_arg_abstract->getTensor();
-      }
-      args.push(allocated_outputs);
-    } else {
-      allocated_outputs = outputs;
-      args.push(outputs);
-      executor_utils::validateKernelOutputs(
-          fusion_, allocated_outputs, options_.device);
-    }
-
     // Recompile the kernel if the number of threads in the block has increased
-    // or maxrregcount has changed or nvfuser_index_t size changed
-    bool need_to_recompile =
-        launch_params_.nThreads() > block_size_high_water_mark ||
-        compile_params.maxrregcount != maxrregcount_high_water_mark;
-
-    // we recompile if the index type shrinks too, as it may lead to faster
-    // code.
-    if (args.getIndexMode() != options_.index_mode) {
-      need_to_recompile = true;
-      options_.index_mode = args.getIndexMode();
-    }
-
-    if (need_to_recompile) {
+    // or maxrregcount has changed
+    if (launch_params_.nThreads() > block_size_high_water_mark ||
+        compile_params.maxrregcount != maxrregcount_high_water_mark) {
       const auto kernel = lowered_->kernel();
-      // index type is contained in the kernel name and as a result in
-      // kernel_code which can then be used as a key in KernelDb. TODO This
-      // needs to be cleaned-up so that KernelDb's key is not only the kernel
-      // (we also need the GPU Arch, maxrregcount, ...)
       kernel_code_ = codegen::generateCudaKernel(kernel, kernelName());
       const auto structured_code = getStructuredCode(kernel_code_);
       block_size_high_water_mark = launch_params_.nThreads();
@@ -1217,6 +1162,48 @@ std::vector<at::Tensor> FusionExecutor::runFusion(
         outputs,
         compileTimeDataCache(),
         expr_eval);
+
+    auto alias_indices_entry =
+        executor_utils::caching::ExecutorCompileTimeEntry<
+            executor_utils::caching::InputAliasIndices>(
+            compileTimeDataCache(), [&]() {
+              return std::make_unique<std::vector<std::pair<int, int>>>(
+                  fusion_->getInputAliasIndices());
+            });
+
+    auto& alias_indices = alias_indices_entry.get();
+
+    // NOLINTNEXTLINE(bugprone-branch-clone)
+    if (outputs.empty()) {
+      auto output_alias_indices_entry =
+          executor_utils::caching::ExecutorCompileTimeEntry<
+              executor_utils::caching::OutputAliasIndices>(
+              compileTimeDataCache(), [&]() {
+                return std::make_unique<std::unordered_set<int>>(
+                    fusion_->getOutputAliasIndices());
+              });
+
+      auto& output_alias_indices = output_alias_indices_entry.get();
+
+      allocated_outputs = allocOutputs(args, expr_eval, output_alias_indices);
+
+      for (const auto& entry : alias_indices) {
+        auto aliased_output_index = entry.first;
+        auto aliased_input_index = entry.second;
+        auto tensor_arg_abstract =
+            dynamic_cast<const TensorArgAbstract*>(args[aliased_input_index]);
+        TORCH_INTERNAL_ASSERT(
+            tensor_arg_abstract, "alias io only supports tensor");
+        allocated_outputs[aliased_output_index] =
+            tensor_arg_abstract->getTensor();
+      }
+      args.push(allocated_outputs);
+    } else {
+      allocated_outputs = outputs;
+      args.push(outputs);
+      executor_utils::validateKernelOutputs(
+          fusion_, allocated_outputs, options_.device);
+    }
 
     global_buffers = allocGlobalVals(expr_eval);
 

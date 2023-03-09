@@ -206,16 +206,9 @@ class TORCH_CUDA_CU_API FusionExecutor : public NonCopyable {
         last_compiled_binary_, "-fun 1 -c");
   }
 
-  //! Returns a kernel name.
-  //! The kernel name has a suffix that represents the choosen indexing mode:
-  //! int32 or int64.
-  //! TODO: the suffix is currently used principally as a workaround so we can
-  //! use the kernel string as a key in KernelDb. This should be re-worked.
   std::string kernelName() const {
-    const char* index_type_suffix =
-        options_.index_mode == KernelIndexMode::INT64 ? "_int64" : "_int32";
     std::stringstream ss;
-    ss << "kernel" << fusion_id_ << index_type_suffix;
+    ss << "kernel" << fusion_id_;
     return ss.str();
   }
 

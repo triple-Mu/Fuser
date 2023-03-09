@@ -152,14 +152,6 @@ KernelArgumentHolder KernelArgumentHolder::createKernelArgumentHolder(
 
 // Push a tensor to the arguments
 void KernelArgumentHolder::push(const at::Tensor& tensor) {
-  // Deferred update of index_mode.
-  // Index mode size depends on the fusion inputs AND outputs.
-  // TODO We should also take into account the other intermediary buffers
-  if (index_mode_ == KernelIndexMode::INT32 &&
-      collectIndexMode({tensor}) == KernelIndexMode::INT64) {
-    setIndexMode(KernelIndexMode::INT64);
-  }
-
   changed_ = true;
   if (is_cpu_scalar(tensor)) {
     switch (tensor.scalar_type()) {
@@ -289,44 +281,6 @@ void** KernelArgumentHolder::getBuffer() {
     changed_ = false;
   }
   return void_ptrs_.data();
-}
-
-void KernelArgumentHolder::updateTensorIndexModes() {
-  for (auto& arg : arguments_) {
-    TensorArgAbstract* tensor_arg_old =
-        dynamic_cast<TensorArgAbstract*>(arg.get());
-    if (tensor_arg_old == nullptr)
-      continue;
-    auto tensor = tensor_arg_old->getTensor();
-    int nDims = tensor.ndimension();
-    c10::ScalarType dtype = tensor.scalar_type();
-    std::unique_ptr<TensorArgAbstract> tensor_arg =
-        getTensorArg(dtype, nDims, index_mode_);
-    tensor_arg->setTensor(tensor);
-    tensor_arg->setPointer(tensor.data_ptr());
-    tensor_arg->setDataType(aten_to_data_type(dtype));
-    for (const auto i : c10::irange(nDims)) {
-      tensor_arg->setSize(i, tensor.sizes()[i]);
-      tensor_arg->setStride(i, tensor.strides()[i]);
-    }
-    arg = std::move(tensor_arg);
-  }
-}
-
-KernelIndexMode KernelArgumentHolder::getSmallestIndexModeRequired() const {
-  KernelIndexMode smallest = KernelIndexMode::INT32;
-  for (auto& arg : arguments_) {
-    TensorArgAbstract* tensor_arg_old =
-        dynamic_cast<TensorArgAbstract*>(arg.get());
-    if (tensor_arg_old == nullptr)
-      continue;
-    auto tensor = tensor_arg_old->getTensor();
-    auto mode = collectIndexMode({tensor});
-    if (mode == KernelIndexMode::INT64) {
-      smallest = KernelIndexMode::INT64;
-    }
-  }
-  return smallest;
 }
 
 void KernelArgumentHolder::push(const c10::ArrayRef<c10::IValue>& args) {
