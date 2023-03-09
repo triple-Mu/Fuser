@@ -1387,5 +1387,24 @@ class TestNvFuserFrontend(TestCase):
             self.assertTrue(sorted(sorted_stride, reverse=True) == sorted_stride)
 
 
+    def test_real_imag(self):
+        for dtype in [
+                torch.complex128,
+                torch.complex64,
+            ]:
+            inputs = [
+                torch.randn(5, dtype=dtype, device='cuda'),
+            ]
+
+            def fusion_func(fd: FusionDefinition) :
+                t0 = fd.from_pytorch(inputs[0])
+                fd.add_output(t0.real())
+                fd.add_output(t0.imag())
+
+            nvf_out, _ = self.exec_nvfuser(fusion_func, inputs)
+
+            self.assertEqual(torch.real(inputs[0]), nvf_out[0])
+            self.assertEqual(torch.imag(inputs[0]), nvf_out[1])
+
 if __name__ == '__main__':
     run_tests()

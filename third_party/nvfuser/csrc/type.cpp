@@ -236,9 +236,11 @@ bool needFloatSuffix(UnaryOpType t) {
     case UnaryOpType::Cast:
     case UnaryOpType::Frac:
     case UnaryOpType::Gelu:
+    case UnaryOpType::Imag:
     case UnaryOpType::Silu:
     case UnaryOpType::BitCast:
     case UnaryOpType::Neg:
+    case UnaryOpType::Real:
     case UnaryOpType::Relu:
     case UnaryOpType::Reciprocal:
     case UnaryOpType::Set:
