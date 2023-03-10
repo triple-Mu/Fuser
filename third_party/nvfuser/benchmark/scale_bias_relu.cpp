@@ -20,8 +20,7 @@ static void setupSBR(Fusion* fusion, DataType dtype) {
   std::vector<int64_t> bcast_shape(kNumberOfDims, 1);
   bcast_shape[bcast_shape.size() - 1] = -1;
 
-  std::vector<bool> bcast_contig(kNumberOfDims, false);
-  bcast_contig[bcast_contig.size() - 1] = true;
+  std::vector<bool> bcast_contig(1, true);
 
   auto x = makeContigTensor(kNumberOfDims, dtype);
 

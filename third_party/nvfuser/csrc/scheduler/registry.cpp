@@ -1035,13 +1035,7 @@ size_t SchedulerRuntimeInfo::getInnerDimVectorizableWidth(TensorView* tv) {
 }
 
 bool SchedulerEntry::sameAs(const SchedulerEntry* other) {
-  if (heuristc_ != other->heuristc_) {
-    return false;
-  }
-  if (index_mode_ != other->index_mode_) {
-    return false;
-  }
-  return params_->sameAs(other->params_);
+  return heuristic_ == other->heuristic_ && params_->sameAs(other->params_);
 }
 
 namespace {
@@ -1147,6 +1141,8 @@ class NoOpScheduler : public SchedulerEntry {
   //!  unified interface on NoOp scheduler.
   class NoOpHeuristic : public HeuristicParams {
    public:
+    using HeuristicParams::HeuristicParams;
+
     size_t hash() const override {
       return 0;
     }
@@ -1155,7 +1151,7 @@ class NoOpScheduler : public SchedulerEntry {
     }
     bool sameAs(const std::shared_ptr<HeuristicParams>& other) const override {
       auto other_casted = std::dynamic_pointer_cast<ReductionParams>(other);
-      return other_casted != nullptr;
+      return other_casted != nullptr && other_casted->cparams == cparams;
     };
   };
 
@@ -1165,7 +1161,7 @@ class NoOpScheduler : public SchedulerEntry {
       SchedulerRuntimeInfo& runtime_info,
       HeuristicSummary* data_cache = nullptr)
       : SchedulerEntry(ScheduleHeuristic::NoOp) {
-    params_ = std::make_shared<NoOpHeuristic>();
+    params_ = std::make_shared<NoOpHeuristic>("", runtime_info.getIndexMode());
   }
 
   //! Check if the no-op heuristics apply in given fusion
@@ -2140,7 +2136,6 @@ std::unique_ptr<SchedulerEntry> SchedulerEntry::makeEntry(
       TORCH_INTERNAL_ASSERT(false, "unreachable");
   }
 
-  scheduler_entry->index_mode_ = runtime_info.getIndexMode();
   return scheduler_entry;
 }
 

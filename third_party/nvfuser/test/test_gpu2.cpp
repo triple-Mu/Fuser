@@ -2230,7 +2230,7 @@ __global__ void kernel1(Tensor<float, 1> T0, Tensor<float, 1> T1) {
   }
 }
     )";
-  fe.compileRtc(kernel, "CudaCodeGen::kernel1");
+  fe.compileRtc(kernel, "CudaCodeGen::kernel1", false, PrimDataType::Int);
   LaunchParams lp(
       256, // gdimx
       1, // gdimy
@@ -2245,7 +2245,7 @@ __global__ void kernel1(Tensor<float, 1> T0, Tensor<float, 1> T1) {
   const std::vector<int64_t> tensor_dims = {8};
   auto in0 = at::randn(tensor_dims, options);
   auto out0 = at::empty_like(in0);
-  fe.runRtc(lp, {in0, out0});
+  fe.runRtc(lp, {in0, out0}, PrimDataType::Int);
 
   auto out_ref = in0 * 2;
   TORCH_CHECK(out_ref.allclose(out0));
@@ -2286,7 +2286,7 @@ __global__ void kernel1(
     }
 }
     )";
-  fe.compileRtc(kernel, "CudaCodeGen::kernel1");
+  fe.compileRtc(kernel, "CudaCodeGen::kernel1", false, PrimDataType::Int);
   LaunchParams lp(
       1, // gdimx
       1, // gdimy
@@ -2302,7 +2302,7 @@ __global__ void kernel1(
   auto in0 = at::randn(tensor_dims, options);
   auto out_var = at::empty({x}, options);
   auto out_avg = at::empty({x}, options);
-  fe.runRtc(lp, {in0, out_var, out_avg});
+  fe.runRtc(lp, {in0, out_var, out_avg}, PrimDataType::Int);
 
   TORCH_CHECK(in0.var({1, 2}, false).allclose(out_var));
   TORCH_CHECK(in0.mean({1, 2}).allclose(out_avg, /*rtol*/ 1e-5, /*atol*/ 1e-6));
@@ -2360,7 +2360,7 @@ __global__ void kernel1(
     }
 }
     )";
-  fe.compileRtc(kernel, "CudaCodeGen::kernel1");
+  fe.compileRtc(kernel, "CudaCodeGen::kernel1", false, PrimDataType::Int);
   LaunchParams lp(
       1, // gdimx
       1, // gdimy
@@ -2387,7 +2387,10 @@ __global__ void kernel1(
   // run kernel
   auto out_var = at::zeros({x}, options);
   auto out_avg = at::zeros({x}, options);
-  fe.runRtc(lp, {in0, out_avg, out_var, init_avg, init_var, init_N});
+  fe.runRtc(
+      lp,
+      {in0, out_avg, out_var, init_avg, init_var, init_N},
+      PrimDataType::Int);
 
   // compare with reference output
   auto cat_tensor = at::cat({init_in, in0}, 1);
@@ -2440,7 +2443,7 @@ __global__ void kernel1(
     }
 }
     )";
-  fe.compileRtc(kernel, "CudaCodeGen::kernel1");
+  fe.compileRtc(kernel, "CudaCodeGen::kernel1", false, PrimDataType::Int);
   LaunchParams lp(
       1, // gdimx
       1, // gdimy
@@ -2456,7 +2459,7 @@ __global__ void kernel1(
   auto in0 = at::randn(tensor_dims, options);
   auto out_var = at::empty({x}, options);
   auto out_avg = at::empty({x}, options);
-  fe.runRtc(lp, {in0, out_avg, out_var});
+  fe.runRtc(lp, {in0, out_avg, out_var}, PrimDataType::Int);
 
   TORCH_CHECK(in0.var({1, 2}, false).allclose(out_var));
   TORCH_CHECK(in0.mean({1, 2}).allclose(out_avg, /*rtol*/ 1e-5, /*atol*/ 1e-6));
@@ -2515,7 +2518,7 @@ __global__ void kernel1(
     }
 }
     )";
-  fe.compileRtc(kernel, "CudaCodeGen::kernel1");
+  fe.compileRtc(kernel, "CudaCodeGen::kernel1", false, PrimDataType::Int);
   LaunchParams lp(
       x, // gdimx
       y, // gdimy
@@ -2547,7 +2550,8 @@ __global__ void kernel1(
        work_buf_avg,
        work_buf_var,
        work_buf_N,
-       sync_flag});
+       sync_flag},
+      PrimDataType::Int);
   std::vector<int64_t> dims{0, 1};
 
   TORCH_CHECK(in0.mean(dims).allclose(out_avg, /*rtol*/ 1e-5, /*atol*/ 1e-6));

@@ -8,7 +8,7 @@
 
 namespace nvfuser {
 
-DataType indexModeToDtype(KernelIndexMode index_mode) {
+PrimDataType indexModeToDtype(KernelIndexMode index_mode) {
   switch (index_mode) {
     case KernelIndexMode::INT32:
       return DataType::Int32;
@@ -17,6 +17,12 @@ DataType indexModeToDtype(KernelIndexMode index_mode) {
     default:
       TORCH_CHECK(false, "Invalid kernel index mode type.");
   }
+}
+
+KernelIndexMode indexTypeToMode(DataType index_type) {
+  return index_type == indexModeToDtype(KernelIndexMode::INT32)
+      ? KernelIndexMode::INT32
+      : KernelIndexMode::INT64;
 }
 
 bool isFloatingPointType(DataType dtype) {
@@ -1028,6 +1034,21 @@ std::ostream& operator<<(std::ostream& os, const SwizzleMode& swizzle) {
       break;
     default:
       TORCH_INTERNAL_ASSERT(false, "undefined 2D swizzle");
+      break;
+  }
+  return os;
+}
+
+std::ostream& operator<<(std::ostream& os, const KernelIndexMode& index_mode) {
+  switch (index_mode) {
+    case KernelIndexMode::INT32:
+      os << "INT32";
+      break;
+    case KernelIndexMode::INT64:
+      os << "INT64";
+      break;
+    default:
+      TORCH_INTERNAL_ASSERT(false, "undefined index mode");
       break;
   }
   return os;
