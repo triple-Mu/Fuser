@@ -1291,7 +1291,7 @@ TEST_F(NVFuserTest, FusionIssue1430_CUDA) {
   auto tv0 = TensorViewBuilder()
                  .ndims(5)
                  .dtype(DataType::Half)
-                 .contiguity(std::vector<bool>(5, true))
+                 .contiguity(true)
                  .shape({V, W, X, Y, Z})
                  .build();
 
@@ -4089,7 +4089,7 @@ TEST_F(NVFuserTest, FusionReproNoncontigBroadcast_CUDA) {
                  .build();
   auto tv1 = TensorViewBuilder()
                  .ndims(4)
-                 .contiguity({true, true})
+                 .contiguity({true, c10::nullopt, c10::nullopt, true})
                  .shape({-1, 1, 1, -1})
                  .dtype(DataType::Half)
                  .build();
@@ -4702,7 +4702,7 @@ TEST_F(NVFuserTest, FusionExpandRepro1860_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   Fusion& fusion = *fusion_ptr;
   FusionGuard fg(&fusion);
-  std::vector<bool> contiguity{};
+  std::vector<c10::optional<bool>> contiguity(3, c10::nullopt);
 
   std::vector<int64_t> shape{1, -1, -1};
   TensorView* tv0 = makeContigConcreteTensor(shape);
@@ -4861,7 +4861,7 @@ TEST_F(NVFuserTest, FusionExpandBadShapeTest_CUDA) {
   auto fusion_ptr = std::make_unique<Fusion>();
   Fusion& fusion = *fusion_ptr;
   FusionGuard fg(&fusion);
-  std::vector<bool> contiguity{false};
+  std::vector<c10::optional<bool>> contiguity{false, c10::nullopt};
 
   auto tv0 = makeSymbolicTensor(2);
   fusion.addInput(tv0);
@@ -5998,7 +5998,7 @@ TEST_F(NVFuserTest, FusionExpandedInput_CUDA) {
   TensorView* tv0 = TensorViewBuilder()
                         .ndims(3)
                         .shape({-1, -1, -1})
-                        .contiguity({false, true})
+                        .contiguity({false, c10::nullopt, true})
                         .expanded({false, true, false})
                         .build();
   fusion->addInput(tv0);
@@ -6862,7 +6862,8 @@ TEST_F(NVFuserTest, FusionSqueezeOnlyWelford_CUDA) {
     auto dim0 = IterDomainBuilder(w1.avg->axis(0)).build();
     auto dim1 = IterDomainBuilder(w1.avg->axis(1)).build();
     auto td = IrBuilder::create<TensorDomain>(
-        std::vector<IterDomain*>{dim0, dim1}, std::vector<bool>{true, true});
+        std::vector<IterDomain*>{dim0, dim1},
+        std::vector<c10::optional<bool>>{true, true});
     auto tv = IrBuilder::create<TensorView>(td, dtype);
     return tv;
   };

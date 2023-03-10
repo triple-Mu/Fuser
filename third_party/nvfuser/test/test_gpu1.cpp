@@ -881,9 +881,9 @@ TEST_F(NVFuserTest, FusionTensor_CUDA) {
       // size 1 dimension are makred as broadcast
       TORCH_CHECK(fuser_tensor->axis(i)->isBroadcast() == false);
     }
-    TORCH_CHECK(fuser_tensor->domain()->contiguity()[0]);
-    TORCH_CHECK(!fuser_tensor->domain()->contiguity()[1]);
-    TORCH_CHECK(fuser_tensor->domain()->contiguity()[2]);
+    TORCH_CHECK(*fuser_tensor->domain()->contiguity()[0]);
+    TORCH_CHECK(!*fuser_tensor->domain()->contiguity()[1]);
+    TORCH_CHECK(*fuser_tensor->domain()->contiguity()[2]);
   }
 
   {
@@ -898,10 +898,10 @@ TEST_F(NVFuserTest, FusionTensor_CUDA) {
       // size 1 dimension are makred as broadcast
       TORCH_CHECK(fuser_tensor->axis(i)->isBroadcast() == false);
     }
-    TORCH_CHECK(!fuser_tensor->domain()->contiguity()[0]);
-    TORCH_CHECK(!fuser_tensor->domain()->contiguity()[1]);
-    TORCH_CHECK(fuser_tensor->domain()->contiguity()[2]);
-    TORCH_CHECK(!fuser_tensor->domain()->contiguity()[3]);
+    TORCH_CHECK(!*fuser_tensor->domain()->contiguity()[0]);
+    TORCH_CHECK(!*fuser_tensor->domain()->contiguity()[1]);
+    TORCH_CHECK(*fuser_tensor->domain()->contiguity()[2]);
+    TORCH_CHECK(!*fuser_tensor->domain()->contiguity()[3]);
   }
 }
 

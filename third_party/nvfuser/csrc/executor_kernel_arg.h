@@ -6,6 +6,7 @@
 #include <torch/csrc/jit/ir/ir.h>
 #include <type.h>
 #include <array>
+#include <optional>
 
 namespace nvfuser {
 

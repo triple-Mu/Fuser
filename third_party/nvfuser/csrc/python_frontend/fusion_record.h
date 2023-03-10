@@ -1105,42 +1105,22 @@ struct TensorRecord : RecordFunctor {
   }
 
   virtual void operator()(FusionState& fd) final {
-    // auto tv = TensorViewBuilder()
-    //               .ndims(symbolic_sizes_.size())
-    //               .contiguity(contiguous_info_)
-    //               .shape(symbolic_sizes_)
-    //               .dtype(dtype_)
-    //               .build();
-    std::vector<IterDomain*> sizes;
-    std::vector<bool> contig_info;
     int rank = symbolic_sizes_.size();
+    std::vector<bool> is_expand(rank);
 
     for (const auto index : c10::irange(rank)) {
-      if (!contiguous_info_[index].has_value()) {
-        auto builder = IterDomainBuilder(
-                           FusionGuard::getCurFusion()->zeroVal(),
-                           FusionGuard::getCurFusion()->oneVal())
-                           .iter_type(IterType::Broadcast);
-        if (symbolic_sizes_[index] == 1) {
-          sizes.push_back(builder.build());
-        } else if (symbolic_sizes_[index] == -1) {
-          sizes.push_back(
-              builder.expanded_extent(IrBuilder::create<Int>()).build());
-        } else {
-          TORCH_INTERNAL_ASSERT(
-              false, "static shape in Tensor is not implemented yet");
-        }
-      } else {
-        sizes.push_back(IterDomainBuilder(
-                            FusionGuard::getCurFusion()->zeroVal(),
-                            IrBuilder::create<Int>())
-                            .build());
-        contig_info.push_back(contiguous_info_[index].value());
-      }
+      bool is_broadcast = !contiguous_info_[index].has_value();
+      bool has_symbolic_size = (symbolic_sizes_[index] == -1);
+      is_expand[index] = is_broadcast && has_symbolic_size;
     }
 
-    auto tv = IrBuilder::create<TensorView>(
-        IrBuilder::create<TensorDomain>(sizes, contig_info), dtype_);
+    auto tv = TensorViewBuilder()
+                  .ndims(symbolic_sizes_.size())
+                  .contiguity(contiguous_info_)
+                  .shape(symbolic_sizes_)
+                  .dtype(dtype_)
+                  .expanded(std::move(is_expand))
+                  .build();
 
     if (symbolic_sizes_.empty() && is_cpu_) {
       tv->setCpuScalar(true);
