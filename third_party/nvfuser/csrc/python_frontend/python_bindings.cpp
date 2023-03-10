@@ -318,10 +318,10 @@ void initNvFuserPythonBindings(PyObject* module) {
             maybe_symbolic_sizes.reserve(sizes.size());
             for (const auto i : c10::irange(sizes.size())) {
               TORCH_INTERNAL_ASSERT(
-                  sizes[i] > 0,
+                  sizes[i] >= 0,
                   "Size of ",
                   sizes[i],
-                  " is not supported in nvFuser. Expected size > 0.");
+                  " is not supported in nvFuser. Expected size >= 0.");
               if (sizes[i] == 1) {
                 maybe_symbolic_sizes.push_back(1);
               } else {

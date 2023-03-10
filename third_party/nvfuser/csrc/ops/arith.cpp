@@ -94,7 +94,7 @@ TensorView* unaryOp(
   return unaryOp(type, cast_v1)->as<TensorView>();
 }
 
-TensorView* select(TensorView* tv, int dim, Int* index) {
+TensorView* select(TensorView* tv, int dim, Val* index) {
   auto dom = TensorDomain::noReductions(tv->getMaybeRFactorDomain());
   TORCH_CHECK(dom.size() > 0, "select can not be applied to 0d tensor.");
 
@@ -137,7 +137,13 @@ TensorView* index_select(TensorView* lookup_tv, int dim, TensorView* index_tv) {
       TensorDomain::noReductions(index_tv->getMaybeRFactorDomain());
   size_t n_dims = lookup_dom.size();
   TORCH_CHECK(n_dims > 0, "index_select can not be applied to 0d tensor.");
-  TORCH_CHECK(index_dom.size() == 1, "index array must be 1d tensor.");
+  TORCH_CHECK(
+      index_dom.size() <= 1, "index array must be 1d or scalar tensor.");
+
+  if (index_dom.size() == 0) {
+    auto select_tv = select(lookup_tv, dim, index_tv);
+    return unsqueeze(select_tv, dim);
+  }
 
   if (dim < 0) {
     dim += lookup_dom.size();

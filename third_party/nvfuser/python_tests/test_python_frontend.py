@@ -746,6 +746,28 @@ class TestNvFuserFrontend(TestCase):
         test_fn(0)
         test_fn(1)
 
+    def test_index_select_scalar_indices(self):
+        inputs = [
+            torch.randn(8, 16, device="cuda"),
+            torch.tensor(2, device="cuda").to(dtype=torch.long),
+        ]
+
+        def test_fn(dim):
+            def fusion_func(fd: FusionDefinition):
+                t0 = fd.from_pytorch(inputs[0])
+                t1 = fd.from_pytorch(inputs[1])
+                t2 = fd.ops.index_select(t0, t1, dim)
+                fd.add_output(t2)
+
+            nvf_out, _ = self.exec_nvfuser(fusion_func, inputs)
+
+            eager_out = torch.index_select(inputs[0], dim, inputs[1])
+            self.assertEqual(eager_out, nvf_out[0])
+
+        test_fn(0)
+        test_fn(1)
+
+
     def test_squeeze(self):
         t0_sizes = [4]
         t1_sizes = [1, 4, 1]
