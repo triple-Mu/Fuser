@@ -6089,14 +6089,14 @@ TEST_F(NVFuserTest, FusionRepro2094_CUDA) {
     auto tv0 = TensorViewBuilder()
                    .ndims(1)
                    .shape(neg_one_vec)
-                   .contiguity({true})
+                   .contiguity(true)
                    .dtype(DataType::Float)
                    .build();
     fusion->addInput(tv0);
     auto tv1 = TensorViewBuilder()
                    .ndims(1)
                    .shape(neg_one_vec)
-                   .contiguity({true})
+                   .contiguity(true)
                    .dtype(DataType::Float)
                    .build();
     fusion->addInput(tv1);
