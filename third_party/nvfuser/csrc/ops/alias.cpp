@@ -444,7 +444,7 @@ TensorView* pad(TensorView* inp, const std::vector<Val*>& pad_widths) {
           root_ids,
           rfactor_ids,
           rfactor_ids,
-          TensorDomain::getContiguousContiguity(rfactor_ids)),
+          TensorDomain::getContiguityFilledWith(rfactor_ids, true)),
       *inp->getDataType());
 
   IrBuilder::create<PadOp>(out, inp, normalized_pad_widths);
@@ -645,7 +645,7 @@ TensorView* slice(TensorView* inp, const std::vector<Slice>& ranges) {
           root_ids,
           rfactor_ids,
           rfactor_ids,
-          TensorDomain::getContiguousContiguity(rfactor_ids)),
+          TensorDomain::getContiguityFilledWith(rfactor_ids, true)),
       *inp->getDataType());
 
   IrBuilder::create<SliceOp>(out, inp, normalized_ranges);
