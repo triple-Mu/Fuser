@@ -1027,7 +1027,7 @@ struct TensorRecord : RecordFunctor {
   TensorRecord(
       std::vector<State> _outputs,
       std::vector<int64_t> _symbolic_sizes,
-      std::vector<bool> _contiguous_info,
+      std::vector<c10::optional<bool>> _contiguous_info,
       PrimDataType _dtype,
       bool _is_cpu = false)
       : RecordFunctor(
@@ -1038,7 +1038,11 @@ struct TensorRecord : RecordFunctor {
         symbolic_sizes_(std::move(_symbolic_sizes)),
         contiguous_info_(std::move(_contiguous_info)),
         dtype_(_dtype),
-        is_cpu_(_is_cpu) {}
+        is_cpu_(_is_cpu) {
+    TORCH_CHECK(
+        symbolic_sizes_.size() == contiguous_info_.size(),
+        "symbolic_sizes needs to has the same length as contiguous_info");
+  }
   virtual ~TensorRecord() = default;
   virtual RecordFunctor* clone() final {
     return new TensorRecord(*this);
@@ -1059,7 +1063,9 @@ struct TensorRecord : RecordFunctor {
     }
     size_t contig_hash = 0;
     for (size_t i = 0; i < contiguous_info_.size(); ++i) {
-      contig_hash |= (contiguous_info_[i] << (contiguous_info_.size() - 1 - i));
+      contig_hash |=
+          ((contiguous_info_[i].has_value() && contiguous_info_[i].value())
+           << (contiguous_info_.size() - 1 - i));
     }
 
     result |= ((static_cast<size_t>(is_cpu_) & 0x1) << 31);
@@ -1099,11 +1105,21 @@ struct TensorRecord : RecordFunctor {
   }
 
   virtual void operator()(FusionState& fd) final {
+    int rank = symbolic_sizes_.size();
+    std::vector<bool> is_expand(rank);
+
+    for (const auto index : c10::irange(rank)) {
+      bool is_broadcast = !contiguous_info_[index].has_value();
+      bool has_symbolic_size = (symbolic_sizes_[index] == -1);
+      is_expand[index] = is_broadcast && has_symbolic_size;
+    }
+
     auto tv = TensorViewBuilder()
                   .ndims(symbolic_sizes_.size())
                   .contiguity(contiguous_info_)
                   .shape(symbolic_sizes_)
                   .dtype(dtype_)
+                  .expanded(std::move(is_expand))
                   .build();
 
     if (symbolic_sizes_.empty() && is_cpu_) {
@@ -1136,10 +1152,14 @@ struct TensorRecord : RecordFunctor {
       } else {
         os << ", ";
       }
-      if (ci) {
-        os << "True";
+      if (!ci.has_value()) {
+        os << "None";
       } else {
-        os << "False";
+        if (*ci) {
+          os << "True";
+        } else {
+          os << "False";
+        }
       }
     }
     os << "], dtype=" << dtypeToPyString(dtype_);
@@ -1156,7 +1176,7 @@ struct TensorRecord : RecordFunctor {
   std::vector<int64_t> symbolic_sizes_;
   //! A vector to indicate whether the a tensor dimension is contiguous
   //! with the dimension just to its right.
-  std::vector<bool> contiguous_info_;
+  std::vector<c10::optional<bool>> contiguous_info_;
   //! Tensor data type.
   PrimDataType dtype_;
   //! Notes a scalar CPU Tensor

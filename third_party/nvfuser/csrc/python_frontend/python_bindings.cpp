@@ -19,27 +19,24 @@
 
 namespace nvfuser::python_frontend {
 
-std::vector<bool> computeContiguity(
+std::vector<c10::optional<bool>> computeContiguity(
     const std::vector<int64_t>& sizes,
     const std::vector<int64_t>& strides) {
   TORCH_CHECK(
       sizes.size() == strides.size(),
       "compute_contiguity: Sizes and strides must have the same number of dimensions");
   auto not_broadcast = [&](auto i) { return strides[i] != 0 && sizes[i] != 1; };
-  auto irange = c10::irange(sizes.size());
-  auto no_b_size = std::count_if(irange.begin(), irange.end(), not_broadcast);
-  std::vector<bool> contiguity(no_b_size);
+  std::vector<c10::optional<bool>> contiguity(sizes.size(), c10::nullopt);
   if (contiguity.size() == 0) {
     return contiguity;
   }
   int64_t last = sizes.size() - 1;
   for (; last >= 0; --last) {
     if (not_broadcast(last)) {
+      contiguity[last] = (strides.at(last) == 1);
       break;
     }
   }
-  contiguity[no_b_size - 1] = (strides.at(last) == 1);
-  int64_t no_broadcast_i = 0;
   for (int64_t i = 0; i < last;) {
     if (not_broadcast(i)) {
       auto l = i++;
@@ -48,8 +45,7 @@ std::vector<bool> computeContiguity(
           break;
         }
       }
-      contiguity[no_broadcast_i] = (strides[l] == strides[i] * sizes[i]);
-      no_broadcast_i++;
+      contiguity[l] = (strides[l] == strides[i] * sizes[i]);
     } else {
       i++;
     }
@@ -263,7 +259,7 @@ void initNvFuserPythonBindings(PyObject* module) {
           "define_tensor",
           [](FusionDefinition& self,
              std::vector<int64_t>& symbolic_sizes,
-             std::vector<bool>& contiguous,
+             std::vector<c10::optional<bool>>& contiguous,
              PrimDataType dtype = DataType::Float,
              bool is_cpu = false) -> Tensor {
             FUSER_PERF_SCOPE("FusionDefinition.define_tensor (default)");
@@ -322,10 +318,10 @@ void initNvFuserPythonBindings(PyObject* module) {
             maybe_symbolic_sizes.reserve(sizes.size());
             for (const auto i : c10::irange(sizes.size())) {
               TORCH_INTERNAL_ASSERT(
-                  sizes[i] > 0,
+                  sizes[i] >= 0,
                   "Size of ",
                   sizes[i],
-                  " is not supported in nvFuser. Expected size > 0.");
+                  " is not supported in nvFuser. Expected size >= 0.");
               if (sizes[i] == 1) {
                 maybe_symbolic_sizes.push_back(1);
               } else {

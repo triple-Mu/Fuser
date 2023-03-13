@@ -1413,11 +1413,8 @@ std::vector<Val*> Index::getGlobalProducerStridedIndices(
     }
   }
 
-  auto no_broadcast_root_dom = TensorDomain::noBroadcasts(root_dom);
   TORCH_INTERNAL_ASSERT(
-      no_broadcast_root_dom.size() ==
-      producer_tv->domain()->contiguity().size());
-  auto full2nob_map = ir_utils::fullToNoBroadcastMap(root_dom);
+      root_dom.size() == producer_tv->domain()->contiguity().size());
   Val* cur_contig_stride = GpuLower::current()->kernel()->oneVal();
   for (const auto i : c10::irange(root_dom.size())) {
     auto dim = root_dom.size() - i - 1;
@@ -1427,7 +1424,9 @@ std::vector<Val*> Index::getGlobalProducerStridedIndices(
 
     if (root_dom[dim]->isBroadcast()) {
       strides[dim] = cur_contig_stride->fusion()->zeroVal();
-    } else if (producer_tv->domain()->contiguity().at(full2nob_map.at(dim))) {
+      TORCH_INTERNAL_ASSERT(
+          !producer_tv->domain()->contiguity().at(dim).has_value());
+    } else if (*producer_tv->domain()->contiguity().at(dim)) {
       // If contig, used the stored stride which may be the previous
       // dimensions stride * previous dimensions size
       strides[dim] = cur_contig_stride;
@@ -1799,10 +1798,7 @@ std::vector<Val*> Index::getStrides(const TensorView* tv) {
     }
   }
 
-  auto no_broadcast_root_dom = TensorDomain::noBroadcasts(root_dom);
-  TORCH_INTERNAL_ASSERT(
-      no_broadcast_root_dom.size() == tv->domain()->contiguity().size());
-  auto full2nob_map = ir_utils::fullToNoBroadcastMap(root_dom);
+  TORCH_INTERNAL_ASSERT(root_dom.size() == tv->domain()->contiguity().size());
   Val* cur_contig_stride = GpuLower::current()->kernel()->oneVal();
   for (const auto i : c10::irange(root_dom.size())) {
     auto dim = root_dom.size() - i - 1;
@@ -1812,7 +1808,8 @@ std::vector<Val*> Index::getStrides(const TensorView* tv) {
 
     if (root_dom[dim]->isBroadcast()) {
       strides[dim] = cur_contig_stride->fusion()->zeroVal();
-    } else if (tv->domain()->contiguity().at(full2nob_map.at(dim))) {
+      TORCH_INTERNAL_ASSERT(!tv->domain()->contiguity().at(dim).has_value());
+    } else if (*tv->domain()->contiguity().at(dim)) {
       // If contig, used the stored stride which may be the previous
       // dimensions stride * previous dimensions size
       strides[dim] = cur_contig_stride;
@@ -2384,12 +2381,8 @@ std::vector<PredicateDomainInfo> getPredicateContigIds(
   }
 
   std::unordered_set<IterDomain*> final_ids;
-  int no_broadcast_count = 0;
   for (auto root_i : c10::irange(consumer_root_domain.size())) {
     auto root_id = consumer_root_domain[root_i];
-    if (!root_id->isBroadcast()) {
-      no_broadcast_count++;
-    }
     if (root_id->maybePartial()) {
       final_ids.insert(root_id);
       continue;
@@ -2407,7 +2400,7 @@ std::vector<PredicateDomainInfo> getPredicateContigIds(
   ContigIDs contig_finder(
       consumer_tv->domain()->domain(),
       consumer_root_domain,
-      std::vector<bool>(no_broadcast_count, true),
+      TensorDomain::getContiguityFilledWith(consumer_root_domain, true),
       final_ids,
       concrete_index_map,
       GpuLower::current()->divisibleSplitSet(),
